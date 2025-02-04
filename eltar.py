@@ -9,9 +9,7 @@ def adjust_image(image):
     image = ImageOps.fit(image, target_size, method=Image.LANCZOS)
     return image
 
-def create_pdf(template_path, image, output_filename="tarjetas_output.pdf"):
-    # Cargar la plantilla base
-    template = Image.open(template_path)
+def create_pdf(template, image, output_filename="tarjetas_output.pdf"):
     pdf_width, pdf_height = template.size  # Tomar el tamaño de la plantilla
     card_width, card_height = (500, 900)  # Tamaño de cada tarjeta
     
@@ -44,16 +42,16 @@ def create_pdf(template_path, image, output_filename="tarjetas_output.pdf"):
 
 def main():
     st.title("Generador de PDF de Tarjetas")
-    st.write("Subí la imagen y reemplazará las tarjetas de la plantilla correctamente.")
+    st.write("Subí la plantilla y la imagen que se reemplazará en ella.")
     
-    template_path = "tarjetas, dos paginas, plantilla.pdf (58.5 x 43 cm).png"
+    template_file = st.file_uploader("Subí la plantilla en formato PNG", type=["png"])
     uploaded_file = st.file_uploader("Subí la imagen de la tarjeta", type=["png", "jpg", "jpeg"])
     
-    if uploaded_file is not None:
+    if template_file is not None and uploaded_file is not None:
+        template = Image.open(template_file).convert("RGBA")
         image = Image.open(uploaded_file).convert("RGBA")
         
         # Mostrar vista previa de la plantilla con la imagen reemplazada
-        template = Image.open(template_path)
         preview = template.copy()
         for row in range(3):
             for col in range(9):
@@ -63,7 +61,7 @@ def main():
         
         st.image(preview, caption="Vista previa de la plantilla con la imagen reemplazada", use_column_width=True)
         
-        pdf_output = create_pdf(template_path, image)
+        pdf_output = create_pdf(template, image)
         
         st.success("PDF generado con éxito!")
         st.download_button("Descargar PDF", pdf_output, file_name="tarjetas_output.pdf", mime="application/pdf")
