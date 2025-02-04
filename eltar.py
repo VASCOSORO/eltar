@@ -1,20 +1,29 @@
 import streamlit as st
-from PIL import Image
+from PIL import Image, ImageOps
 from fpdf import FPDF
 import io
+
+def adjust_image(image):
+    # Ajustar la imagen a un tamaño fijo de 5cm x 9cm (500x900 px en 100 dpi aprox)
+    target_size = (500, 900)
+    image = ImageOps.fit(image, target_size, method=Image.LANCZOS)
+    return image
 
 def create_pdf(image, output_filename="tarjetas_output.pdf"):
     # Definir dimensiones del PDF
     pdf_width = 58.5 * 10  # cm to mm
     pdf_height = 43 * 10  # cm to mm
-    card_width = pdf_width / 9  # 9 tarjetas por fila
-    card_height = pdf_height / 3  # 3 filas
+    card_width = 5 * 10  # 5 cm en mm
+    card_height = 9 * 10  # 9 cm en mm
     
     # Crear un PDF en alta calidad
     pdf = FPDF(unit="mm", format=[pdf_width, pdf_height])
     pdf.add_page()
     
-    # Guardar imagen en memoria
+    # Ajustar la imagen
+    image = adjust_image(image)
+    
+    # Guardar imagen en memoria en alta calidad
     img_io = io.BytesIO()
     image = image.convert("RGB")  # Convertir a RGB para evitar errores con PNGs con transparencia
     image.save(img_io, format="JPEG", quality=95)  # Guardar en alta calidad
