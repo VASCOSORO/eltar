@@ -8,7 +8,7 @@ def adjust_image(image, size):
     # Ajustar la imagen para que encaje en la plantilla sin errores
     return ImageOps.fit(image, size, method=Image.LANCZOS)
 
-def create_pdf(template, image, grid_positions, output_filename="tarjetas_output.pdf"):
+def create_pdf(template, image, grid_positions):
     pdf_width, pdf_height = template.size  # Tamaño de la plantilla
     card_width, card_height = grid_positions[0][2], grid_positions[0][3]  # Tamaño de cada tarjeta
     
@@ -49,8 +49,12 @@ def main():
     uploaded_file = st.file_uploader("Subí la imagen de la tarjeta", type=["png", "jpg", "jpeg"])
     
     if uploaded_file is not None:
-        template = Image.open(template_path).convert("RGBA")
-        image = Image.open(uploaded_file).convert("RGBA")
+        try:
+            template = Image.open(template_path).convert("RGBA")
+            image = Image.open(uploaded_file).convert("RGBA")
+        except FileNotFoundError:
+            st.error("No se encontró la plantilla 'tarjetas.png'. Asegurate de que esté en el repositorio.")
+            return
         
         # Definir posiciones basadas en la plantilla
         grid_positions = []
@@ -75,7 +79,7 @@ def main():
         pdf_output = create_pdf(template, image, grid_positions)
         
         st.success("PDF generado con éxito!")
-        st.download_button("Descargar PDF", pdf_output, file_name="tarjetas_output.pdf", mime="application/pdf")
+        st.download_button("Descargar PDF", data=pdf_output, file_name="tarjetas_output.pdf", mime="application/pdf")
         
 if __name__ == "__main__":
     main()
