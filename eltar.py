@@ -4,135 +4,157 @@ from fpdf import FPDF
 import io
 import os
 
-# ---------------------------------
-# PARÁMETROS DE PÁGINA Y MÁRGENES
-# ---------------------------------
-PAGE_WIDTH_CM = 47.5  # Hoja horizontal
-PAGE_HEIGHT_CM = 32.5
-MARGIN_LEFT_RIGHT_CM = 1.0
-MARGIN_TOP_BOTTOM_CM = 2.57
-
+# Conversión de cm a pt (FPDF usa puntos)
 CM_TO_PT = 28.3465
-PAGE_WIDTH_PT = PAGE_WIDTH_CM * CM_TO_PT
-PAGE_HEIGHT_PT = PAGE_HEIGHT_CM * CM_TO_PT
-MARGIN_LR_PT = MARGIN_LEFT_RIGHT_CM * CM_TO_PT
-MARGIN_TB_PT = MARGIN_TOP_BOTTOM_CM * CM_TO_PT
-
-# Zona útil (donde centramos la imagen)
-CONTENT_WIDTH_PT = PAGE_WIDTH_PT - 2 * MARGIN_LR_PT
-CONTENT_HEIGHT_PT = PAGE_HEIGHT_PT - 2 * MARGIN_TB_PT
 
 def adjust_image(image, size):
-    """Ajusta la imagen (manteniendo relación de aspecto) al size deseado."""
+    """
+    Ajusta la imagen a un tamaño específico (tupla width, height) 
+    manteniendo la relación de aspecto via ImageOps.fit.
+    """
     return ImageOps.fit(image, size, method=Image.LANCZOS)
 
-def compose_template(template_path, user_image, rotate=False):
+def compose_template(user_image, cols, rows, rotate=False):
     """
-    Carga la plantilla, pega la imagen en la grilla 9x3 y devuelve
-    la imagen compuesta final (RGBA).
+    Genera la imagen compuesta en RGBA, de tamaño exacto para la grilla (cols x rows),
+    usando "tarjetas.png" como plantilla base.
+    No reescala la plantilla resultante: cada tarjeta queda del tamaño original.
     """
-    template = Image.open(template_path).convert("RGBA")
+    # Cargamos plantilla base
+    template = Image.open("tarjetas.png").convert("RGBA")
+
+    # Si se marcó rotación
     if rotate:
         user_image = user_image.rotate(90, expand=True)
 
-    # Grilla 9x3
-    cols, rows = 9, 3
+    # Ancho y alto de la plantilla
     t_width, t_height = template.size
+    # Asumimos que la plantilla ya está pensada para cols x rows
     card_width = t_width / cols
     card_height = t_height / rows
 
+    # Creamos copia para pegar las imágenes
     composed = template.copy()
     for r in range(rows):
         for c in range(cols):
-            x = c * card_width
-            y = r * card_height
+            x = int(c * card_width)
+            y = int(r * card_height)
+            # Ajustamos la imagen subida al tamaño exacto de cada "hueco"
             adjusted_img = adjust_image(user_image, (int(card_width), int(card_height)))
-            composed.paste(adjusted_img, (int(x), int(y)))
+            composed.paste(adjusted_img, (x, y))
 
-    return composed
+    return composed  # RGBA
 
-def create_pdf(composed_image):
+def create_pdf_no_scale(
+    composed_image,
+    page_width_cm,
+    page_height_cm,
+    margin_left_cm,
+    margin_right_cm,
+    margin_top_cm,
+    margin_bottom_cm,
+    extend_lines=True
+):
     """
-    Genera el PDF (47,5x32,5 cm) con:
-      - Márgenes: 1 cm izq/der, 2,57 cm sup/inf
-      - Grilla 9x3 centrada sin líneas encima
-      - Extiende los límites de cada columna/fila hacia los márgenes
-      - Mantiene líneas en los bordes de la imagen
-    Retorna los bytes del PDF listo.
+    Crea un PDF sin reescalar la imagen compuesta (1:1) y la ubica centrada si sobra espacio.
+    Dibuja líneas de corte:
+      - Un “marco” alrededor de la imagen.
+      - Extiende las divisiones de la grilla hacia los márgenes (si extend_lines=True).
+    Retorna los bytes del PDF.
     """
-    # Guardamos la imagen compuesta temporalmente
+    # Convertimos medidas de la página y márgenes a puntos
+    pw_pt = page_width_cm * CM_TO_PT
+    ph_pt = page_height_cm * CM_TO_PT
+    ml_pt = margin_left_cm * CM_TO_PT
+    mr_pt = margin_right_cm * CM_TO_PT
+    mt_pt = margin_top_cm * CM_TO_PT
+    mb_pt = margin_bottom_cm * CM_TO_PT
+
+    # Área disponible
+    content_w = pw_pt - (ml_pt + mr_pt)
+    content_h = ph_pt - (mt_pt + mb_pt)
+
+    # Guardamos la imagen compuesta en disco temporal, para que FPDF pueda usarla
     temp_path = "temp_composed.jpg"
     composed_image.convert("RGB").save(temp_path, format="JPEG", quality=100)
 
-    # Dimensiones de la imagen en píxeles
+    # Tamaño de la imagen en píxeles
     c_width, c_height = composed_image.size
 
-    # Escalamos para que quepa en la zona útil
-    scale_x = CONTENT_WIDTH_PT / c_width
-    scale_y = CONTENT_HEIGHT_PT / c_height
-    scale = min(scale_x, scale_y)
+    # == PASO 1: Verificar que 1:1 (en puntos) quepa en la página con márgenes ==
+    # Suponemos 1 píxel ~ 1 punto (no lo escalamos). 
+    # Si no entra, se avisa (o podrías recortar márgenes si deseás).
+    final_w = c_width
+    final_h = c_height
 
-    final_w = c_width * scale
-    final_h = c_height * scale
+    if final_w > content_w or final_h > content_h:
+        # Si no entra, avisamos. Podrías forzar “sin margen” o similar.
+        raise ValueError("La imagen (tarjetas) no entra en la página con esos márgenes sin escalar.")
 
-    # Coordenadas para centrar
-    x_pos = MARGIN_LR_PT + (CONTENT_WIDTH_PT - final_w) / 2
-    y_pos = MARGIN_TB_PT + (CONTENT_HEIGHT_PT - final_h) / 2
+    # == PASO 2: Calcular x,y para centrarla dentro del área content ==
+    x_pos = (pw_pt - final_w) / 2
+    y_pos = (ph_pt - final_h) / 2
 
-    pdf = FPDF(unit="pt", format=[PAGE_WIDTH_PT, PAGE_HEIGHT_PT])
+    # Creamos el PDF
+    pdf = FPDF(unit="pt", format=[pw_pt, ph_pt])
     pdf.add_page()
+    # Insertamos la imagen al 100%
     pdf.image(temp_path, x=x_pos, y=y_pos, w=final_w, h=final_h)
 
-    # Ajustamos estilos para las líneas
-    pdf.set_draw_color(255, 0, 0)  # Rojo
+    # Dibujamos líneas de corte en rojo
+    pdf.set_draw_color(255, 0, 0)
     pdf.set_line_width(0.5)
 
-    # -----------------------------
-    # 1) Líneas del marco externo
-    # -----------------------------
-    # Izquierda
-    pdf.line(x_pos, 0, x_pos, y_pos)
-    pdf.line(x_pos, y_pos + final_h, x_pos, PAGE_HEIGHT_PT)
-    # Derecha
-    pdf.line(x_pos + final_w, 0, x_pos + final_w, y_pos)
-    pdf.line(x_pos + final_w, y_pos + final_h, x_pos + final_w, PAGE_HEIGHT_PT)
-    # Superior
-    pdf.line(0, y_pos, x_pos, y_pos)
-    pdf.line(x_pos + final_w, y_pos, PAGE_WIDTH_PT, y_pos)
-    # Inferior
-    pdf.line(0, y_pos + final_h, x_pos, y_pos + final_h)
-    pdf.line(x_pos + final_w, y_pos + final_h, PAGE_WIDTH_PT, y_pos + final_h)
+    # 1) Marco externo alrededor de la imagen
+    #    (arriba, abajo, izquierda, derecha)
+    pdf.line(x_pos, y_pos, x_pos + final_w, y_pos)  # Arriba
+    pdf.line(x_pos, y_pos + final_h, x_pos + final_w, y_pos + final_h)  # Abajo
+    pdf.line(x_pos, y_pos, x_pos, y_pos + final_h)  # Izq
+    pdf.line(x_pos + final_w, y_pos, x_pos + final_w, y_pos + final_h)  # Der
 
-    # -----------------------------
-    # 2) Extensión de líneas de cada columna hacia márgenes
-    #    (8 líneas verticales para las 9 columnas)
-    # -----------------------------
-    cols, rows = 9, 3
-    for col in range(1, cols):  # col=1..8
-        # x dentro de la imagen
-        x_line = x_pos + (col * final_w / cols)
-        # Extiende hacia arriba
-        pdf.line(x_line, 0, x_line, y_pos)
-        # Extiende hacia abajo
-        pdf.line(x_line, y_pos + final_h, x_line, PAGE_HEIGHT_PT)
+    # 2) Extender líneas de división de la grilla hacia márgenes (si la plantilla es 9x3 o la que sea)
+    if extend_lines:
+        # Sacamos cuántas columnas/filas tenía la imagen (p.ej. 9x3).
+        # Lo sabemos si la "plantilla" se dividía en cols, rows, 
+        # pero aquí podemos deducirlo en píxeles:
+        #   - ancho total = c_width
+        #   - col_width = c_width / cols
+        #   => cols = c_width / col_width
+        # Sin “metadatos” directos, suponemos 9x3 para “Super A3” y “A3”,
+        # o 3x3 para “A4”, etc. Podés guardarlo como un arg o manejarlo según convenga.
+        # Acá haremos un truco: detectamos la proporción.
+        # Para simplificar, asume que la plantilla es 9x3 siempre, salvo si no da la proporción.
+        # O definimos manualmente según tamaño de la imagen.
+        # - ancho vs alto ~ 3 veces => decimos 3x3
+        # - ancho vs alto ~ 9x3 => decimos 9x3
+        # etc. ¡Depende de tu template real!
+        ratio = c_width / c_height
+        # Aproximamos
+        if abs(ratio - 3) < 0.2:
+            cols, rows = 3, 3
+        else:
+            # Por defecto 9 x 3
+            cols, rows = 9, 3
 
-    # -----------------------------
-    # 3) Extensión de líneas de cada fila hacia márgenes
-    #    (2 líneas horizontales para las 3 filas)
-    # -----------------------------
-    for row in range(1, rows):  # row=1..2
-        # y dentro de la imagen
-        y_line = y_pos + (row * final_h / rows)
-        # Extiende a la izquierda
-        pdf.line(0, y_line, x_pos, y_line)
-        # Extiende a la derecha
-        pdf.line(x_pos + final_w, y_line, PAGE_WIDTH_PT, y_line)
+        # Líneas verticales internas
+        for col in range(1, cols):
+            x_col = x_pos + (col * (final_w / cols))
+            # Extiende desde el borde superior de la página hasta la imagen,
+            # y desde el borde inferior de la imagen hasta el final de la página
+            pdf.line(x_col, 0, x_col, y_pos)
+            pdf.line(x_col, y_pos + final_h, x_col, ph_pt)
 
-    # Generamos PDF en memoria
+        # Líneas horizontales internas
+        for row in range(1, rows):
+            y_row = y_pos + (row * (final_h / rows))
+            pdf.line(0, y_row, x_pos, y_row)
+            pdf.line(x_pos + final_w, y_row, pw_pt, y_row)
+
+    # Exportamos a bytes en memoria
     pdf_str = pdf.output(dest='S')
     pdf_bytes = pdf_str.encode('latin-1')
 
-    # Borramos el archivo temporal
+    # Borramos archivo temporal
     try:
         os.remove(temp_path)
     except OSError:
@@ -141,35 +163,111 @@ def create_pdf(composed_image):
     return pdf_bytes
 
 def main():
-    st.title("Grilla 9×3 con Líneas de Corte Extendidas a los Márgenes")
+    st.title("Generador de PDFs con el MISMO tamaño de tarjeta")
+
     st.write(
-        "Hoja horizontal 47,5×32,5 cm, con márgenes 1 cm izq/der y 2,57 cm sup/inf.\n"
-        "Se dibujan líneas externas y se extienden las divisiones de la grilla hacia los bordes sin tapar las tarjetas."
+        "Este script crea tres PDFs:\n\n"
+        "- **Súper A3** (47.5×32.5 cm) con grilla de 9×3, márgenes amplios.\n"
+        "- **A3** (42×29.7 cm, horizontal) con la misma grilla 9×3, márgenes reducidos.\n"
+        "- **A4** (29.7×21 cm, horizontal) con grilla 3×3 para que quepan las mismas tarjetas sin reescalar.\n"
+        "\n"
+        "Si no entra la imagen con esos márgenes, se mostrará error. Podés ajustar según necesites."
     )
 
-    rotate_image = st.checkbox("Girar imagen 90° a la izquierda", value=False)
-    uploaded_file = st.file_uploader("Subí tu imagen (para la grilla 9×3)", type=["png", "jpg", "jpeg"])
+    # Checkbox para girar la imagen
+    rotate_image = st.checkbox("Girar la imagen 90° a la izquierda", value=False)
+
+    # Subida de la imagen para las tarjetas
+    uploaded_file = st.file_uploader("Subí tu imagen para colocar en las tarjetas", type=["png", "jpg", "jpeg"])
 
     if uploaded_file is not None:
         try:
             user_image = Image.open(uploaded_file).convert("RGBA")
-            template_path = "tarjetas.png"
 
-            composed_img = compose_template(template_path, user_image, rotate=rotate_image)
-            st.image(composed_img, caption="Vista previa de la plantilla + imagen.", use_column_width=True)
+            # 1) Generamos la imagen compuesta para Súper A3 (9×3)
+            #    => Hoja 47.5×32.5 (ya usado en ejemplos anteriores)
+            super_a3_cols, super_a3_rows = 9, 3
+            composed_super_a3 = compose_template(user_image, super_a3_cols, super_a3_rows, rotate=rotate_image)
 
-            pdf_bytes = create_pdf(composed_img)
-            st.success("¡PDF generado con líneas extendidas en los márgenes!")
-            st.download_button(
-                "Descargar PDF",
-                data=pdf_bytes,
-                file_name="tarjetas_output.pdf",
-                mime="application/pdf"
-            )
+            # 2) Generamos la imagen compuesta para A3 (igual 9×3), pero hoja 42×29.7
+            a3_cols, a3_rows = 9, 3
+            composed_a3 = compose_template(user_image, a3_cols, a3_rows, rotate=rotate_image)
+
+            # 3) Generamos la imagen compuesta para A4 (3×3), para que entre sin reducir tamaño de tarjeta
+            a4_cols, a4_rows = 3, 3
+            composed_a4 = compose_template(user_image, a4_cols, a4_rows, rotate=rotate_image)
+
+            st.write("### Vista previa rápida de la plantilla (Súper A3) 9×3")
+            st.image(composed_super_a3, caption="Plantilla 9×3 (Súper A3)", use_column_width=True)
+
+            # Botones de descarga: Súper A3, A3 y A4
+            # -- SÚPER A3 --
+            if st.button("Descargar PDF Súper A3 (9×3)"):
+                try:
+                    pdf_bytes_super_a3 = create_pdf_no_scale(
+                        composed_super_a3,
+                        page_width_cm=47.5,
+                        page_height_cm=32.5,
+                        margin_left_cm=1.0,
+                        margin_right_cm=1.0,
+                        margin_top_cm=2.57,
+                        margin_bottom_cm=2.57,
+                        extend_lines=True
+                    )
+                    st.download_button(
+                        label="Descargar Súper A3 PDF",
+                        data=pdf_bytes_super_a3,
+                        file_name="tarjetas_superA3.pdf",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"Error al generar PDF Súper A3: {e}")
+
+            # -- A3 --
+            if st.button("Descargar PDF A3 (9×3)"):
+                try:
+                    pdf_bytes_a3 = create_pdf_no_scale(
+                        composed_a3,
+                        page_width_cm=42,  # A3 horizontal
+                        page_height_cm=29.7,
+                        margin_left_cm=0.5,  # márgenes más chicos
+                        margin_right_cm=0.5,
+                        margin_top_cm=1.0,
+                        margin_bottom_cm=1.0,
+                        extend_lines=True
+                    )
+                    st.download_button(
+                        label="Descargar A3 PDF",
+                        data=pdf_bytes_a3,
+                        file_name="tarjetas_A3.pdf",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"Error al generar PDF A3: {e}")
+
+            # -- A4 --
+            if st.button("Descargar PDF A4 (3×3)"):
+                try:
+                    pdf_bytes_a4 = create_pdf_no_scale(
+                        composed_a4,
+                        page_width_cm=29.7,  # A4 horizontal
+                        page_height_cm=21.0,
+                        margin_left_cm=1.0,
+                        margin_right_cm=1.0,
+                        margin_top_cm=1.0,
+                        margin_bottom_cm=1.0,
+                        extend_lines=True
+                    )
+                    st.download_button(
+                        label="Descargar A4 PDF",
+                        data=pdf_bytes_a4,
+                        file_name="tarjetas_A4.pdf",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"Error al generar PDF A4: {e}")
+
         except FileNotFoundError:
-            st.error("No se encontró la plantilla 'tarjetas.png'. Verificá que esté en el directorio.")
-        except Exception as e:
-            st.error(f"Ocurrió un error: {e}")
-
-if __name__ == "__main__":
-    main()
+            st.error("No se encontró la plantilla 'tarjetas.png'. Ponela en el mismo directorio.")
+        except Exception as err:
+            st.error(f"Ocurrió un error general: {err}")
