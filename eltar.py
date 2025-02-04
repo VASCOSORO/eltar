@@ -14,14 +14,15 @@ def create_pdf(image, output_filename="tarjetas_output.pdf"):
     pdf = FPDF(unit="mm", format=[pdf_width, pdf_height])
     pdf.add_page()
     
-    # Convertir la imagen en alta calidad
+    # Guardar imagen en memoria
     img_io = io.BytesIO()
-    image.save(img_io, format="PNG", dpi=(300, 300))
+    image = image.convert("RGB")  # Convertir a RGB para evitar errores con PNGs con transparencia
+    image.save(img_io, format="JPEG", quality=95)  # Guardar en alta calidad
     img_io.seek(0)
     
     # Guardar temporalmente la imagen
-    temp_img_path = "temp_image.png"
-    image.save(temp_img_path, format="PNG", dpi=(300, 300))
+    temp_img_path = "temp_image.jpg"
+    image.save(temp_img_path, format="JPEG", quality=95)
     
     # Agregar 27 tarjetas en la disposición correcta
     for row in range(3):  # 3 filas
@@ -30,7 +31,7 @@ def create_pdf(image, output_filename="tarjetas_output.pdf"):
             y = row * card_height
             pdf.image(temp_img_path, x=x, y=y, w=card_width, h=card_height)
     
-    # Guardar el PDF
+    # Guardar el PDF en memoria
     pdf_output = io.BytesIO()
     pdf.output(pdf_output, dest='S')
     pdf_output.seek(0)
