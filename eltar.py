@@ -4,33 +4,25 @@ from fpdf import FPDF
 import io
 import os
 
-CM_TO_PT = 28.3465  # Conversión de cm a puntos
+CM_TO_PT = 28.3465
 
 def adjust_image(image, size):
-    """Ajusta 'image' para que encaje exactamente en 'size' (width, height), manteniendo proporción."""
     return ImageOps.fit(image, size, method=Image.LANCZOS)
 
 def compose_template(template_path, user_image, cols, rows, rotate=False):
-    """
-    Carga 'tarjetas.png', la divide en (cols x rows) y pega 'user_image' en cada hueco.
-    Devuelve la imagen compuesta (modo RGBA).
-    """
     template = Image.open(template_path).convert("RGBA")
     if rotate:
         user_image = user_image.rotate(90, expand=True)
-
     t_w, t_h = template.size
-    card_w = t_w / cols
-    card_h = t_h / rows
-
+    c_w = t_w / cols
+    c_h = t_h / rows
     composed = template.copy()
     for r in range(rows):
         for c in range(cols):
-            x = int(c * card_w)
-            y = int(r * card_h)
-            adjusted_img = adjust_image(user_image, (int(card_w), int(card_h)))
-            composed.paste(adjusted_img, (x, y))
-
+            x = int(c * c_w)
+            y = int(r * c_h)
+            adjusted = adjust_image(user_image, (int(c_w), int(c_h)))
+            composed.paste(adjusted, (x, y))
     return composed
 
 def draw_preview_image(
@@ -40,11 +32,13 @@ def draw_preview_image(
     cols, rows
 ):
     """
-    Genera una imagen PIL (vista previa) con la hoja en blanco
-    y la 'composed_image' centrada y escalada para que quepa.
-    Dibuja las mismas líneas de corte y márgenes en rojo.
+    Genera una PIL Image en blanco (tamaño = hoja en puntos),
+    centra 'composed_image' y dibuja las marcas de corte:
+    - Marco externo
+    - Extensión de columnas en márgenes sup/inf
+    - Extensión de filas en márgenes izq/der
     """
-    # Convertimos cm → pt
+    # --- Conversión y “hoja” en blanco ---
     pw_pt = page_w_cm * CM_TO_PT
     ph_pt = page_h_cm * CM_TO_PT
     ml_pt = ml_cm * CM_TO_PT
@@ -52,69 +46,65 @@ def draw_preview_image(
     mt_pt = mt_cm * CM_TO_PT
     mb_pt = mb_cm * CM_TO_PT
 
-    # Creamos la "hoja" en blanco
     page_w_px = int(round(pw_pt))
     page_h_px = int(round(ph_pt))
-    preview = Image.new("RGB", (page_w_px, page_h_px), color="white")
+    preview = Image.new("RGB", (page_w_px, page_h_px), "white")
     draw = ImageDraw.Draw(preview)
 
-    # Medidas de la imagen compuesta
+    # --- Escalar y centrar la imagen compuesta ---
     c_w, c_h = composed_image.size
-
-    # Área útil (en pt)
     content_w_pt = pw_pt - (ml_pt + mr_pt)
-    content_h_pt = ph_pt - (mt_pt + mb_pt)
-
-    # Escalamos para que quepa
+    content_h_pt = ph_pt - (mt_pt + mb_cm)
     scale = min(content_w_pt / c_w, content_h_pt / c_h)
     final_w = c_w * scale
     final_h = c_h * scale
-
     x_pos = ml_pt + (content_w_pt - final_w) / 2
     y_pos = mt_pt + (content_h_pt - final_h) / 2
 
-    # Redondeamos a píxeles
+    # Convertir a píxeles para la vista previa
     x_pos_px = int(round(x_pos))
     y_pos_px = int(round(y_pos))
     final_w_px = int(round(final_w))
     final_h_px = int(round(final_h))
 
-    # Reescalamos la compuesta
+    # Pegamos la imagen escalada
     scaled = composed_image.resize((final_w_px, final_h_px), Image.LANCZOS)
-    # Pegamos en la hoja en blanco
     preview.paste(scaled, (x_pos_px, y_pos_px))
 
-    # Dibujamos líneas en rojo
+    # --- Dibujar líneas rojas ---
     color = (255, 0, 0)
-    lw = 1
-
+    lw = 2
     x_right = x_pos_px + final_w_px
     y_bottom = y_pos_px + final_h_px
 
     # 1) Marco externo
-    # Izquierda
+    # Izq
     draw.line([(x_pos_px, 0), (x_pos_px, y_pos_px)], fill=color, width=lw)
     draw.line([(x_pos_px, y_bottom), (x_pos_px, page_h_px)], fill=color, width=lw)
-    # Derecha
+    # Der
     draw.line([(x_right, 0), (x_right, y_pos_px)], fill=color, width=lw)
     draw.line([(x_right, y_bottom), (x_right, page_h_px)], fill=color, width=lw)
-    # Superior
+    # Sup
     draw.line([(0, y_pos_px), (x_pos_px, y_pos_px)], fill=color, width=lw)
     draw.line([(x_right, y_pos_px), (page_w_px, y_pos_px)], fill=color, width=lw)
-    # Inferior
+    # Inf
     draw.line([(0, y_bottom), (x_pos_px, y_bottom)], fill=color, width=lw)
     draw.line([(x_right, y_bottom), (page_w_px, y_bottom)], fill=color, width=lw)
 
-    # 2) Columnas internas
+    # 2) Columnas internas → solo en margen sup/inf
     for col in range(1, cols):
         x_col = x_pos_px + int(round(col * final_w_px / cols))
+        # Margen superior
         draw.line([(x_col, 0), (x_col, y_pos_px)], fill=color, width=lw)
+        # Margen inferior
         draw.line([(x_col, y_bottom), (x_col, page_h_px)], fill=color, width=lw)
 
-    # 3) Filas internas
+    # 3) Filas internas → solo en margen izq/der
     for row in range(1, rows):
-        y_row = y_pos_px + int(round(row * final_w_px / rows))
+        y_row = y_pos_px + int(round(row * final_h_px / rows))
+        # Margen izquierdo
         draw.line([(0, y_row), (x_pos_px, y_row)], fill=color, width=lw)
+        # Margen derecho
         draw.line([(x_right, y_row), (page_w_px, y_row)], fill=color, width=lw)
 
     return preview
@@ -126,7 +116,9 @@ def create_pdf(
     cols, rows
 ):
     """
-    Genera el PDF final con FPDF, dibujando las mismas líneas rojas en el margen.
+    Crea el PDF con el mismo sistema de líneas:
+    - Columnas solo en margen sup/inf
+    - Filas solo en margen izq/der
     """
     pw_pt = page_w_cm * CM_TO_PT
     ph_pt = page_h_cm * CM_TO_PT
@@ -135,7 +127,7 @@ def create_pdf(
     mt_pt = mt_cm * CM_TO_PT
     mb_pt = mb_cm * CM_TO_PT
 
-    # Guardamos la imagen compuesta temporal
+    # Guardamos la imagen en disco
     temp_path = "temp_comp.jpg"
     composed_image.convert("RGB").save(temp_path, "JPEG", quality=100)
 
@@ -143,7 +135,6 @@ def create_pdf(
     cw_pt = pw_pt - (ml_pt + mr_pt)
     ch_pt = ph_pt - (mt_pt + mb_cm)
     scale = min(cw_pt / c_w, ch_pt / c_h)
-
     final_w = c_w * scale
     final_h = c_h * scale
     x_pos = ml_pt + (cw_pt - final_w) / 2
@@ -153,7 +144,6 @@ def create_pdf(
     pdf.add_page()
     pdf.image(temp_path, x=x_pos, y=y_pos, w=final_w, h=final_h)
 
-    # Líneas rojas
     pdf.set_draw_color(255, 0, 0)
     pdf.set_line_width(0.5)
 
@@ -174,16 +164,20 @@ def create_pdf(
     pdf.line(0, yb, x_pos, yb)
     pdf.line(xr, yb, pw_pt, yb)
 
-    # Cols internas
+    # Columnas (solo margen sup/inf)
     for col in range(1, cols):
         x_col = x_pos + (col * final_w / cols)
+        # Arriba
         pdf.line(x_col, 0, x_col, y_pos)
+        # Abajo
         pdf.line(x_col, yb, x_col, ph_pt)
 
-    # Filas internas
+    # Filas (solo margen izq/der)
     for row in range(1, rows):
         y_row = y_pos + (row * final_h / rows)
+        # Izq
         pdf.line(0, y_row, x_pos, y_row)
+        # Der
         pdf.line(xr, y_row, pw_pt, y_row)
 
     pdf_str = pdf.output(dest="S")
@@ -197,148 +191,44 @@ def create_pdf(
     return pdf_bytes
 
 def main():
-    st.title("Diferentes formatos y cantidades de tarjetas")
-    st.markdown(
-        "- **Súper A3 (47,5×32,5 cm)** → 9×3 = 27 tarjetas\n"
-        "- **A3 (42×29,7 cm)** → 8×3 = 24 tarjetas\n"
-        "- **A4 (29,7×21 cm)** → 3×4 = 12 tarjetas\n\n"
-        "Cada uno con sus propios márgenes y líneas de corte."
-    )
+    st.title("Marcas laterales restauradas: como antes")
+    rotate = st.checkbox("Rotar imagen 90° a la izquierda", False)
+    upfile = st.file_uploader("Subí tu imagen", ["png", "jpg", "jpeg"])
 
-    rotate_image = st.checkbox("Girar imagen 90° a la izquierda", value=False)
-    uploaded_file = st.file_uploader("Subí tu imagen", type=["png", "jpg", "jpeg"])
-
-    if uploaded_file:
+    if upfile:
         try:
-            user_image = Image.open(uploaded_file).convert("RGBA")
+            user_img = Image.open(upfile).convert("RGBA")
             template_path = "tarjetas.png"
 
-            # 1) Súper A3 -> 9×3 = 27
-            composed_superA3 = compose_template(template_path, user_image, cols=9, rows=3, rotate=rotate_image)
-            # 2) A3 -> 8×3 = 24
-            composed_A3 = compose_template(template_path, user_image, cols=8, rows=3, rotate=rotate_image)
-            # 3) A4 -> 3×4 = 12
-            composed_A4 = compose_template(template_path, user_image, cols=3, rows=4, rotate=rotate_image)
-
-            # Vista previa (select)
-            preview_choice = st.selectbox(
-                "¿Qué formato querés ver en la vista previa?",
-                ["Súper A3 (9×3=27)", "A3 (8×3=24)", "A4 (3×4=12)"]
+            # Ejemplo A3 => 8x3
+            composed = compose_template(template_path, user_img, cols=8, rows=3, rotate=rotate)
+            # Vista previa
+            preview_img = draw_preview_image(
+                composed, 
+                page_w_cm=42.0, page_h_cm=29.7,
+                ml_cm=1.0, mr_cm=1.0, mt_cm=1.0, mb_cm=1.0,
+                cols=8, rows=3
             )
+            st.image(preview_img, "Vista previa con líneas “como antes”")
 
-            if preview_choice == "Súper A3 (9×3=27)":
-                # 47,5×32,5 cm, márgenes 1 / 2,57
-                pre = draw_preview_image(
-                    composed_superA3,
-                    page_w_cm=47.5,
-                    page_h_cm=32.5,
-                    ml_cm=1.0,
-                    mr_cm=1.0,
-                    mt_cm=2.57,
-                    mb_cm=2.57,
-                    cols=9,
-                    rows=3
-                )
-                st.image(pre, "Vista previa: Súper A3 (27)")
-
-            elif preview_choice == "A3 (8×3=24)":
-                # 42×29,7 cm, márgenes 1 cm
-                pre = draw_preview_image(
-                    composed_A3,
-                    page_w_cm=42.0,
-                    page_h_cm=29.7,
-                    ml_cm=1.0,
-                    mr_cm=1.0,
-                    mt_cm=1.0,
-                    mb_cm=1.0,
-                    cols=8,
-                    rows=3
-                )
-                st.image(pre, "Vista previa: A3 (24)")
-
-            else:  # "A4 (3×4=12)"
-                # 29,7×21 cm, márgenes 1 cm
-                pre = draw_preview_image(
-                    composed_A4,
-                    page_w_cm=29.7,
-                    page_h_cm=21.0,
-                    ml_cm=1.0,
-                    mr_cm=1.0,
-                    mt_cm=1.0,
-                    mb_cm=1.0,
-                    cols=3,
-                    rows=4
-                )
-                st.image(pre, "Vista previa: A4 (12)")
-
-            st.write("---")
-            st.write("**Descargá el PDF en cualquier tamaño:**")
-
-            # Botón Súper A3
-            if st.button("Descargar PDF Súper A3 (27 tarjetas)"):
-                pdf_superA3 = create_pdf(
-                    composed_superA3,
-                    page_w_cm=47.5,
-                    page_h_cm=32.5,
-                    ml_cm=1.0,
-                    mr_cm=1.0,
-                    mt_cm=2.57,
-                    mb_cm=2.57,
-                    cols=9,
-                    rows=3
+            if st.button("Descargar PDF"):
+                pdf_data = create_pdf(
+                    composed,
+                    page_w_cm=42.0, page_h_cm=29.7,
+                    ml_cm=1.0, mr_cm=1.0, mt_cm=1.0, mb_cm=1.0,
+                    cols=8, rows=3
                 )
                 st.download_button(
-                    "Descargar Súper A3 PDF",
-                    data=pdf_superA3,
-                    file_name="tarjetas_superA3_9x3.pdf",
-                    mime="application/pdf"
-                )
-
-            # Botón A3
-            if st.button("Descargar PDF A3 (24 tarjetas)"):
-                pdf_a3 = create_pdf(
-                    composed_A3,
-                    page_w_cm=42.0,
-                    page_h_cm=29.7,
-                    ml_cm=1.0,
-                    mr_cm=1.0,
-                    mt_cm=1.0,
-                    mb_cm=1.0,
-                    cols=8,
-                    rows=3
-                )
-                st.download_button(
-                    "Descargar A3 PDF",
-                    data=pdf_a3,
-                    file_name="tarjetas_A3_8x3.pdf",
-                    mime="application/pdf"
-                )
-
-            # Botón A4
-            if st.button("Descargar PDF A4 (12 tarjetas)"):
-                pdf_a4 = create_pdf(
-                    composed_A4,
-                    page_w_cm=29.7,
-                    page_h_cm=21.0,
-                    ml_cm=1.0,
-                    mr_cm=1.0,
-                    mt_cm=1.0,
-                    mb_cm=1.0,
-                    cols=3,
-                    rows=4
-                )
-                st.download_button(
-                    "Descargar A4 PDF",
-                    data=pdf_a4,
-                    file_name="tarjetas_A4_3x4.pdf",
+                    "Descargar PDF A3",
+                    data=pdf_data,
+                    file_name="tarjetas_A3_restablecido.pdf",
                     mime="application/pdf"
                 )
 
         except FileNotFoundError:
-            st.error("No se encontró la plantilla 'tarjetas.png'. Verificá que esté en el directorio.")
+            st.error("No se encontró 'tarjetas.png'. Revisá que esté en la carpeta.")
         except Exception as e:
-            st.error(f"Ocurrió un error: {e}")
+            st.error(f"Error: {e}")
 
 if __name__ == "__main__":
     main()
- 
