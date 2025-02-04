@@ -32,10 +32,9 @@ def compose_template(template_path, user_image, rotate=False):
     la imagen compuesta final (en modo RGBA).
     """
     template = Image.open(template_path).convert("RGBA")
-    
     if rotate:
         user_image = user_image.rotate(90, expand=True)
-    
+
     # Grilla 9x3
     cols, rows = 9, 3
     t_width, t_height = template.size
@@ -57,21 +56,20 @@ def create_pdf(composed_image):
     Crea un PDF (47,5 x 32,5 cm horizontales) con:
       - Márgenes: 1 cm izq/der, 2,57 cm sup/inf
       - Imagen compuesta centrada
-      - Líneas de corte para cada tarjeta
-      - Regla desde el centro (0) hacia los bordes
-    Devuelve los bytes del PDF listo para descarga.
+      - Líneas de corte SOLO en los márgenes (no sobre la imagen)
+    Retorna los bytes del PDF listo para descargar.
     """
-
     # Guardamos la imagen compuesta temporalmente
     temp_path = "temp_composed.jpg"
     composed_image.convert("RGB").save(temp_path, format="JPEG", quality=100)
 
-    c_width, c_height = composed_image.size  # En píxeles
+    # Tamaño de la imagen en píxeles
+    c_width, c_height = composed_image.size
 
-    # Factor de escala para que quepa sin deformar dentro de la zona útil
+    # Factor de escala para que quepa dentro de la zona útil (respetando proporciones)
     scale_x = CONTENT_WIDTH_PT / c_width
     scale_y = CONTENT_HEIGHT_PT / c_height
-    scale = min(scale_x, scale_y)  # Elegimos el factor menor para no recortar
+    scale = min(scale_x, scale_y)
 
     final_w = c_width * scale
     final_h = c_height * scale
@@ -88,88 +86,71 @@ def create_pdf(composed_image):
     pdf.image(temp_path, x=x_pos, y=y_pos, w=final_w, h=final_h)
 
     # -----------------------------
-    # 1) DIBUJAR LÍNEAS DE CORTE (grilla 9x3)
+    # DIBUJAR "LÍNEAS DE CORTE" EN LOS MÁRGENES (NO SOBRE LA IMAGEN)
     # -----------------------------
-    pdf.set_draw_color(255, 0, 0)     # Rojo, por ejemplo
-    pdf.set_line_width(0.5)          # Grosor de línea
+    pdf.set_draw_color(255, 0, 0)     # Rojo
+    pdf.set_line_width(0.5)
 
-    # Tamaño original de la plantilla
-    t_width, t_height = composed_image.size
-    cols, rows = 9, 3
-    card_w_px = t_width / cols
-    card_h_px = t_height / rows
+    # Líneas verticales a la izquierda y derecha, 
+    # extendidas solo en la zona de margen superior e inferior.
+    # 1) Línea izq: a x = x_pos
+    pdf.line(
+        x_pos,           # x inicio
+        0,               # y inicio (tope de la hoja)
+        x_pos,           # x fin
+        y_pos            # y fin (donde empieza la imagen)
+    )
+    pdf.line(
+        x_pos,                    # x inicio
+        y_pos + final_h,         # donde termina la imagen
+        x_pos,                    # x fin
+        PAGE_HEIGHT_PT           # hasta el borde inferior
+    )
+    # 2) Línea der: a x = x_pos + final_w
+    pdf.line(
+        x_pos + final_w,
+        0,
+        x_pos + final_w,
+        y_pos
+    )
+    pdf.line(
+        x_pos + final_w,
+        y_pos + final_h,
+        x_pos + final_w,
+        PAGE_HEIGHT_PT
+    )
 
-    # Dimensiones en PDF tras escalar
-    card_w_pt = card_w_px * scale
-    card_h_pt = card_h_px * scale
+    # Líneas horizontales arriba y abajo, en la zona de margen izq/der
+    # 3) Línea sup: y = y_pos
+    pdf.line(
+        0,       # x inicio
+        y_pos,   # y
+        x_pos,   # x fin (donde empieza la imagen)
+        y_pos
+    )
+    pdf.line(
+        x_pos + final_w,
+        y_pos,
+        PAGE_WIDTH_PT,
+        y_pos
+    )
+    # 4) Línea inf: y = y_pos + final_h
+    pdf.line(
+        0,
+        y_pos + final_h,
+        x_pos,
+        y_pos + final_h
+    )
+    pdf.line(
+        x_pos + final_w,
+        y_pos + final_h,
+        PAGE_WIDTH_PT,
+        y_pos + final_h
+    )
 
-    # Trazamos líneas verticales
-    for c in range(1, cols):
-        x_line = x_pos + c * card_w_pt
-        pdf.line(x_line, y_pos, x_line, y_pos + final_h)
-    
-    # Trazamos líneas horizontales
-    for r in range(1, rows):
-        y_line = y_pos + r * card_h_pt
-        pdf.line(x_pos, y_line, x_pos + final_w, y_line)
-
-    # -----------------------------
-    # 2) REGLAS DESDE EL CENTRO
-    # -----------------------------
-    pdf.set_draw_color(0, 0, 255)  # Azul
-    pdf.set_line_width(0.2)
-    pdf.set_font("Courier", size=8)
-
-    center_x = PAGE_WIDTH_PT / 2
-    center_y = PAGE_HEIGHT_PT / 2
-
-    # Línea horizontal principal (centro)
-    pdf.line(0, center_y, PAGE_WIDTH_PT, center_y)
-    # Línea vertical principal (centro)
-    pdf.line(center_x, 0, center_x, PAGE_HEIGHT_PT)
-
-    # Trazamos pequeñas marcas cada 1 cm (aprox)
-    max_x_cm = PAGE_WIDTH_CM / 2    # Hacia la derecha e izquierda del centro
-    max_y_cm = PAGE_HEIGHT_CM / 2   # Hacia arriba y abajo del centro
-
-    # Horizontal
-    for i in range(int(max_x_cm) + 1):
-        # Positivo (derecha)
-        x_mark_pos = center_x + i * CM_TO_PT
-        # Negativo (izquierda)
-        x_mark_neg = center_x - i * CM_TO_PT
-
-        # Marcas (pequeñas líneas)
-        tick_size = 5  # tamaño de la marca
-        pdf.line(x_mark_pos, center_y - tick_size, x_mark_pos, center_y + tick_size)
-        pdf.line(x_mark_neg, center_y - tick_size, x_mark_neg, center_y + tick_size)
-
-        # Texto debajo de la línea horizontal
-        pdf.text(x_mark_pos + 2, center_y + 15, f"{i}")
-        if i != 0:
-            pdf.text(x_mark_neg + 2, center_y + 15, f"{-i}")
-
-    # Vertical
-    for j in range(int(max_y_cm) + 1):
-        y_mark_pos = center_y + j * CM_TO_PT
-        y_mark_neg = center_y - j * CM_TO_PT
-
-        # Marcas
-        tick_size = 5
-        pdf.line(center_x - tick_size, y_mark_pos, center_x + tick_size, y_mark_pos)
-        pdf.line(center_x - tick_size, y_mark_neg, center_x + tick_size, y_mark_neg)
-
-        # Texto a la derecha de la línea vertical
-        # (desplazamos un poco en x para no pisar la línea)
-        pdf.text(center_x + 8, y_mark_pos, f"{-j}")  # abajo es negativo
-        if j != 0:
-            pdf.text(center_x + 8, y_mark_neg, f"{j}")  # arriba es positivo
-
-    # -----------------------------
-    # EXPORTAR PDF
-    # -----------------------------
-    pdf_str = pdf.output(dest='S')         # PDF como string
-    pdf_bytes = pdf_str.encode('latin-1')  # Convertimos a bytes
+    # Generamos PDF en memoria
+    pdf_str = pdf.output(dest='S')
+    pdf_bytes = pdf_str.encode('latin-1')
 
     # Borramos el archivo temporal
     try:
@@ -180,23 +161,27 @@ def create_pdf(composed_image):
     return pdf_bytes
 
 def main():
-    st.title("Generador de PDF con Reglas y Líneas de Corte")
-    st.write("Hoja horizontal 47,5 cm x 32,5 cm, con márgenes y regla desde el centro.")
+    st.title("Generador de PDF Horizontal con Líneas de Corte en Márgenes")
+    st.write(
+        "Hoja 47,5 cm x 32,5 cm, con 1 cm de margen izq/der y 2,57 cm sup/inf. "
+        "Se dibujan líneas de corte en los costados sin cruzar la imagen."
+    )
 
     rotate_image = st.checkbox("Girar la imagen 90° a la izquierda", value=False)
-    uploaded_file = st.file_uploader("Subí tu imagen para la grilla (9x3)", type=["png", "jpg", "jpeg"])
+    uploaded_file = st.file_uploader("Subí tu imagen (para la grilla 9x3)", type=["png", "jpg", "jpeg"])
 
     if uploaded_file is not None:
         try:
             user_image = Image.open(uploaded_file).convert("RGBA")
-
             template_path = "tarjetas.png"
+
+            # Componemos la plantilla 9x3
             composed_img = compose_template(template_path, user_image, rotate=rotate_image)
+            st.image(composed_img, caption="Vista previa: plantilla + imagen (9x3)", use_column_width=True)
 
-            st.image(composed_img, caption="Vista previa de la plantilla + imagen (9x3).", use_column_width=True)
-
+            # Creamos y descargamos el PDF con líneas de corte en los márgenes
             pdf_bytes = create_pdf(composed_img)
-            st.success("¡PDF generado con líneas de corte y regla desde el centro!")
+            st.success("¡PDF generado con éxito!")
             st.download_button(
                 "Descargar PDF",
                 data=pdf_bytes,
