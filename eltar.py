@@ -4,23 +4,9 @@ from fpdf import FPDF
 import io
 import os
 
-# ---------------------------------
-# PARÁMETROS DE PÁGINA Y MÁRGENES
-# ---------------------------------
-PAGE_WIDTH_CM = 47.5  # Hoja horizontal
-PAGE_HEIGHT_CM = 32.5
-MARGIN_LEFT_RIGHT_CM = 1.0
-MARGIN_TOP_BOTTOM_CM = 2.57
-
-CM_TO_PT = 28.3465
-PAGE_WIDTH_PT = PAGE_WIDTH_CM * CM_TO_PT
-PAGE_HEIGHT_PT = PAGE_HEIGHT_CM * CM_TO_PT
-MARGIN_LR_PT = MARGIN_LEFT_RIGHT_CM * CM_TO_PT
-MARGIN_TB_PT = MARGIN_TOP_BOTTOM_CM * CM_TO_PT
-
-# Zona útil (donde centramos la imagen)
-CONTENT_WIDTH_PT = PAGE_WIDTH_PT - 2 * MARGIN_LR_PT
-CONTENT_HEIGHT_PT = PAGE_HEIGHT_PT - 2 * MARGIN_TB_PT
+# ---------------------------------------------------------
+# FUNCIONES PRINCIPALES
+# ---------------------------------------------------------
 
 def adjust_image(image, size):
     """Ajusta la imagen (manteniendo relación de aspecto) al size deseado."""
@@ -51,15 +37,36 @@ def compose_template(template_path, user_image, rotate=False):
 
     return composed
 
-def create_pdf(composed_image):
+def create_pdf(
+    composed_image,
+    page_width_cm,
+    page_height_cm,
+    margin_left_right_cm,
+    margin_top_bottom_cm
+):
     """
-    Genera el PDF (47,5x32,5 cm) con:
-      - Márgenes: 1 cm izq/der, 2,57 cm sup/inf
-      - Grilla 9x3 centrada sin líneas encima
-      - Extiende los límites de cada columna/fila hacia los márgenes
-      - Mantiene líneas en los bordes de la imagen
-    Retorna los bytes del PDF listo.
+    Genera un PDF con el tamaño en cm indicado (horizontal o vertical),
+    con márgenes a izquierda/derecha y arriba/abajo.
+    Centra la grilla 9x3 sin dibujar líneas encima,
+    pero extiende las líneas de corte hacia los márgenes.
+    
+    Retorna los bytes del PDF listo para descargar.
     """
+    # Conversión de cm a puntos
+    CM_TO_PT = 28.3465
+    
+    # Medidas de la página en pt
+    page_width_pt = page_width_cm * CM_TO_PT
+    page_height_pt = page_height_cm * CM_TO_PT
+    
+    # Márgenes en pt
+    margin_lr_pt = margin_left_right_cm * CM_TO_PT
+    margin_tb_pt = margin_top_bottom_cm * CM_TO_PT
+
+    # Zona útil
+    content_width_pt = page_width_pt - 2 * margin_lr_pt
+    content_height_pt = page_height_pt - 2 * margin_tb_pt
+
     # Guardamos la imagen compuesta temporalmente
     temp_path = "temp_composed.jpg"
     composed_image.convert("RGB").save(temp_path, format="JPEG", quality=100)
@@ -68,18 +75,19 @@ def create_pdf(composed_image):
     c_width, c_height = composed_image.size
 
     # Escalamos para que quepa en la zona útil
-    scale_x = CONTENT_WIDTH_PT / c_width
-    scale_y = CONTENT_HEIGHT_PT / c_height
+    scale_x = content_width_pt / c_width
+    scale_y = content_height_pt / c_height
     scale = min(scale_x, scale_y)
 
     final_w = c_width * scale
     final_h = c_height * scale
 
     # Coordenadas para centrar
-    x_pos = MARGIN_LR_PT + (CONTENT_WIDTH_PT - final_w) / 2
-    y_pos = MARGIN_TB_PT + (CONTENT_HEIGHT_PT - final_h) / 2
+    x_pos = margin_lr_pt + (content_width_pt - final_w) / 2
+    y_pos = margin_tb_pt + (content_height_pt - final_h) / 2
 
-    pdf = FPDF(unit="pt", format=[PAGE_WIDTH_PT, PAGE_HEIGHT_PT])
+    # Creamos el PDF
+    pdf = FPDF(unit="pt", format=[page_width_pt, page_height_pt])
     pdf.add_page()
     pdf.image(temp_path, x=x_pos, y=y_pos, w=final_w, h=final_h)
 
@@ -87,46 +95,28 @@ def create_pdf(composed_image):
     pdf.set_draw_color(255, 0, 0)  # Rojo
     pdf.set_line_width(0.5)
 
-    # -----------------------------
     # 1) Líneas del marco externo
-    # -----------------------------
-    # Izquierda
-    pdf.line(x_pos, 0, x_pos, y_pos)
-    pdf.line(x_pos, y_pos + final_h, x_pos, PAGE_HEIGHT_PT)
-    # Derecha
-    pdf.line(x_pos + final_w, 0, x_pos + final_w, y_pos)
-    pdf.line(x_pos + final_w, y_pos + final_h, x_pos + final_w, PAGE_HEIGHT_PT)
-    # Superior
-    pdf.line(0, y_pos, x_pos, y_pos)
-    pdf.line(x_pos + final_w, y_pos, PAGE_WIDTH_PT, y_pos)
-    # Inferior
-    pdf.line(0, y_pos + final_h, x_pos, y_pos + final_h)
-    pdf.line(x_pos + final_w, y_pos + final_h, PAGE_WIDTH_PT, y_pos + final_h)
+    pdf.line(x_pos, 0, x_pos, y_pos)  # Izquierda marg sup
+    pdf.line(x_pos, y_pos + final_h, x_pos, page_height_pt)  # Izquierda marg inf
+    pdf.line(x_pos + final_w, 0, x_pos + final_w, y_pos)  # Derecha marg sup
+    pdf.line(x_pos + final_w, y_pos + final_h, x_pos + final_w, page_height_pt)  # Der marg inf
+    pdf.line(0, y_pos, x_pos, y_pos)  # Superior marg izq
+    pdf.line(x_pos + final_w, y_pos, page_width_pt, y_pos)  # Sup marg der
+    pdf.line(0, y_pos + final_h, x_pos, y_pos + final_h)  # Inf marg izq
+    pdf.line(x_pos + final_w, y_pos + final_h, page_width_pt, y_pos + final_h)  # Inf marg der
 
-    # -----------------------------
-    # 2) Extensión de líneas de cada columna hacia márgenes
-    #    (8 líneas verticales para las 9 columnas)
-    # -----------------------------
+    # 2) Extensión de líneas de cada columna hacia márgenes (8 líneas verticales)
     cols, rows = 9, 3
-    for col in range(1, cols):  # col=1..8
-        # x dentro de la imagen
+    for col in range(1, cols):
         x_line = x_pos + (col * final_w / cols)
-        # Extiende hacia arriba
-        pdf.line(x_line, 0, x_line, y_pos)
-        # Extiende hacia abajo
-        pdf.line(x_line, y_pos + final_h, x_line, PAGE_HEIGHT_PT)
+        pdf.line(x_line, 0, x_line, y_pos)  # arriba
+        pdf.line(x_line, y_pos + final_h, x_line, page_height_pt)  # abajo
 
-    # -----------------------------
-    # 3) Extensión de líneas de cada fila hacia márgenes
-    #    (2 líneas horizontales para las 3 filas)
-    # -----------------------------
-    for row in range(1, rows):  # row=1..2
-        # y dentro de la imagen
+    # 3) Extensión de líneas de cada fila hacia márgenes (2 líneas horizontales)
+    for row in range(1, rows):
         y_line = y_pos + (row * final_h / rows)
-        # Extiende a la izquierda
-        pdf.line(0, y_line, x_pos, y_line)
-        # Extiende a la derecha
-        pdf.line(x_pos + final_w, y_line, PAGE_WIDTH_PT, y_line)
+        pdf.line(0, y_line, x_pos, y_line)  # izq
+        pdf.line(x_pos + final_w, y_line, page_width_pt, y_line)  # der
 
     # Generamos PDF en memoria
     pdf_str = pdf.output(dest='S')
@@ -140,11 +130,17 @@ def create_pdf(composed_image):
 
     return pdf_bytes
 
+# ---------------------------------------------------------
+# MAIN STREAMLIT APP
+# ---------------------------------------------------------
 def main():
-    st.title("Grilla 9×3 con Líneas de Corte Extendidas a los Márgenes")
+    st.title("Grilla 9×3 con Líneas de Corte (Súper A3, A3 y A4)")
     st.write(
-        "Hoja horizontal 47,5×32,5 cm, con márgenes 1 cm izq/der y 2,57 cm sup/inf.\n"
-        "Se dibujan líneas externas y se extienden las divisiones de la grilla hacia los bordes sin tapar las tarjetas."
+        "Esta aplicación te permite generar:\n"
+        "- **Súper A3** (47,5×32,5 cm)\n"
+        "- **A3** (42×29,7 cm, horizontal)\n"
+        "- **A4** (29,7×21 cm, horizontal)\n\n"
+        "Se dibujan las líneas externas y se extienden las divisiones de la grilla 9x3 hacia los bordes."
     )
 
     rotate_image = st.checkbox("Girar imagen 90° a la izquierda", value=False)
@@ -156,16 +152,65 @@ def main():
             template_path = "tarjetas.png"
 
             composed_img = compose_template(template_path, user_image, rotate=rotate_image)
-            st.image(composed_img, caption="Vista previa de la plantilla + imagen.", use_column_width=True)
+            st.image(composed_img, caption="Vista previa de la plantilla + imagen (9×3)", use_column_width=True)
 
-            pdf_bytes = create_pdf(composed_img)
-            st.success("¡PDF generado con líneas extendidas en los márgenes!")
-            st.download_button(
-                "Descargar PDF",
-                data=pdf_bytes,
-                file_name="tarjetas_output.pdf",
-                mime="application/pdf"
-            )
+            # Botón 1: Súper A3
+            if st.button("Generar PDF Súper A3 (47,5×32,5 cm)"):
+                try:
+                    pdf_bytes_superA3 = create_pdf(
+                        composed_img,
+                        page_width_cm=47.5,
+                        page_height_cm=32.5,
+                        margin_left_right_cm=1.0,
+                        margin_top_bottom_cm=2.57
+                    )
+                    st.download_button(
+                        "Descargar PDF Súper A3",
+                        data=pdf_bytes_superA3,
+                        file_name="tarjetas_superA3.pdf",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"Error generando PDF Súper A3: {e}")
+
+            # Botón 2: A3
+            if st.button("Generar PDF A3 (42×29,7 cm)"):
+                try:
+                    pdf_bytes_A3 = create_pdf(
+                        composed_img,
+                        page_width_cm=42.0,  # A3 horizontal
+                        page_height_cm=29.7,
+                        margin_left_right_cm=1.0,
+                        margin_top_bottom_cm=1.5  # Podés ajustar
+                    )
+                    st.download_button(
+                        "Descargar PDF A3",
+                        data=pdf_bytes_A3,
+                        file_name="tarjetas_A3.pdf",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"Error generando PDF A3: {e}")
+
+            # Botón 3: A4
+            if st.button("Generar PDF A4 (29,7×21 cm)"):
+                try:
+                    pdf_bytes_A4 = create_pdf(
+                        composed_img,
+                        page_width_cm=29.7,  # A4 horizontal
+                        page_height_cm=21.0,
+                        margin_left_right_cm=1.0,
+                        margin_top_bottom_cm=1.0  # Ajustá si lo necesitás
+                    )
+                    st.download_button(
+                        "Descargar PDF A4",
+                        data=pdf_bytes_A4,
+                        file_name="tarjetas_A4.pdf",
+                        mime="application/pdf"
+                    )
+                except Exception as e:
+                    st.error(f"Error generando PDF A4: {e}")
+
         except FileNotFoundError:
             st.error("No se encontró la plantilla 'tarjetas.png'. Verificá que esté en el directorio.")
         except Exception as e:
