@@ -2,15 +2,13 @@ import streamlit as st
 from PIL import Image, ImageOps
 from fpdf import FPDF
 import io
+import os
 
 def adjust_image(image, size):
-    # Ajustar la imagen para que encaje en la plantilla
-    image = ImageOps.fit(image, size, method=Image.LANCZOS)
-    return image
+    # Ajustar la imagen para que encaje en la plantilla sin errores
+    return ImageOps.fit(image, size, method=Image.LANCZOS)
 
-def create_pdf(template_path, image, grid_positions, output_filename="tarjetas_output.pdf"):
-    # Cargar la plantilla desde el repositorio
-    template = Image.open(template_path)
+def create_pdf(template, image, grid_positions, output_filename="tarjetas_output.pdf"):
     pdf_width, pdf_height = template.size  # Tamaño de la plantilla
     card_width, card_height = grid_positions[0][2], grid_positions[0][3]  # Tamaño de cada tarjeta
     
@@ -24,9 +22,9 @@ def create_pdf(template_path, image, grid_positions, output_filename="tarjetas_o
     pdf.image(temp_template_path, x=0, y=0, w=pdf_width, h=pdf_height)
     
     # Ajustar la imagen y guardarla temporalmente
-    image = adjust_image(image, (card_width, card_height))
+    image = adjust_image(image, (int(card_width), int(card_height)))
     temp_img_path = "temp_card.jpg"
-    image.save(temp_img_path, format="JPEG", quality=100)
+    image.convert("RGB").save(temp_img_path, format="JPEG", quality=100)
     
     # Insertar la imagen en cada posición de la grilla
     for x, y, w, h in grid_positions:
@@ -36,6 +34,11 @@ def create_pdf(template_path, image, grid_positions, output_filename="tarjetas_o
     pdf_output = io.BytesIO()
     pdf.output(pdf_output, dest='S')
     pdf_output.seek(0)
+    
+    # Eliminar archivos temporales
+    os.remove(temp_template_path)
+    os.remove(temp_img_path)
+    
     return pdf_output
 
 def main():
@@ -69,7 +72,7 @@ def main():
         
         st.image(preview, caption="Vista previa de la plantilla con la imagen reemplazada", use_column_width=True)
         
-        pdf_output = create_pdf(template_path, image, grid_positions)
+        pdf_output = create_pdf(template, image, grid_positions)
         
         st.success("PDF generado con éxito!")
         st.download_button("Descargar PDF", pdf_output, file_name="tarjetas_output.pdf", mime="application/pdf")
