@@ -2,6 +2,7 @@ import streamlit as st
 from PIL import Image, ImageOps
 from fpdf import FPDF
 import io
+import matplotlib.pyplot as plt
 
 def adjust_image(image):
     # Ajustar la imagen a un tamaño fijo de 5cm x 9cm (500x900 px en 100 dpi aprox)
@@ -46,6 +47,19 @@ def create_pdf(image, output_filename="tarjetas_output.pdf"):
     pdf_output.seek(0)
     return pdf_output
 
+def preview_layout(image):
+    fig, ax = plt.subplots(figsize=(10, 7))
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.set_title("Vista previa de la disposición")
+    
+    for row in range(3):
+        for col in range(9):
+            x, y = col, 2 - row  # Ajustar el orden para que se vea bien en la previsualización
+            ax.imshow(image, extent=[x, x+1, y, y+1])
+    
+    st.pyplot(fig)
+
 def main():
     st.title("Generador de PDF de Tarjetas")
     st.write("Subí una imagen y generá un PDF con 27 tarjetas en la disposición correcta.")
@@ -54,6 +68,12 @@ def main():
     
     if uploaded_file is not None:
         image = Image.open(uploaded_file).convert("RGBA")
+        image = adjust_image(image)
+        
+        # Mostrar vista previa
+        st.write("Vista previa de la disposición:")
+        preview_layout(image)
+        
         pdf_output = create_pdf(image)
         
         st.success("PDF generado con éxito!")
