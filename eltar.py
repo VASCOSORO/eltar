@@ -18,16 +18,15 @@ def create_pdf(template, image, grid_positions):
     pdf_width, pdf_height = template.size
     card_width, card_height = grid_positions[0][2], grid_positions[0][3]
     
-    # Creamos el PDF con FPDF (medidas en puntos)
     pdf = FPDF(unit="pt", format=[pdf_width, pdf_height])
     pdf.add_page()
     
-    # Guardamos la plantilla temporalmente y la añadimos al PDF
+    # Guardamos la plantilla temporalmente (para poder usar pdf.image)
     temp_template_path = "temp_template.jpg"
     template.convert("RGB").save(temp_template_path, format="JPEG", quality=100)
     pdf.image(temp_template_path, x=0, y=0, w=pdf_width, h=pdf_height)
     
-    # Ajustamos la imagen al tamaño de cada tarjeta
+    # Ajustamos la imagen al tamaño de cada tarjeta y guardamos temporal
     image = adjust_image(image, (int(card_width), int(card_height)))
     temp_img_path = "temp_card.jpg"
     image.convert("RGB").save(temp_img_path, format="JPEG", quality=100)
@@ -36,47 +35,43 @@ def create_pdf(template, image, grid_positions):
     for x, y, w, h in grid_positions:
         pdf.image(temp_img_path, x=x, y=y, w=w, h=h)
     
-    # Exportamos el PDF a un buffer en memoria
-    pdf_output = io.BytesIO()
-    pdf.output(pdf_output, dest='S')
-    pdf_output.seek(0)
+    # Generamos el PDF en memoria como string (dest='S')
+    pdf_str = pdf.output(dest='S')
     
-    # Eliminamos archivos temporales
+    # Convertimos el string a bytes (necesario para descargar)
+    pdf_bytes = pdf_str.encode('latin-1')
+    
+    # Eliminamos temporales
     try:
         os.remove(temp_template_path)
         os.remove(temp_img_path)
     except OSError:
         pass
     
-    return pdf_output
+    return pdf_bytes
 
 def main():
     st.title("Generador de PDF de Tarjetas")
-    st.write("Subí la imagen que se reemplazará en la plantilla. Si la necesitás girar 90° a la izquierda, marcá la opción.")
+    st.write("Subí la imagen que se reemplazará en la plantilla. Si necesitás girarla, marcá el check.")
 
-    # Ruta de la plantilla
     template_path = "tarjetas.png"
-    
-    # Check para girar la imagen
     rotate_image = st.checkbox("Girar 90° a la izquierda", value=False)
     
-    # Subida de imagen
     uploaded_file = st.file_uploader("Subí la imagen de la tarjeta", type=["png", "jpg", "jpeg"])
 
     if uploaded_file is not None:
         try:
-            # Cargamos la plantilla
+            # Cargamos plantilla
             try:
                 template = Image.open(template_path).convert("RGBA")
             except FileNotFoundError:
                 st.error("No se encontró la plantilla 'tarjetas.png'. Asegurate de que esté en el repositorio.")
                 return
             
-            # Cargamos la imagen del usuario
-            # Si no es un archivo de imagen válido, lanza excepción
+            # Cargamos imagen subida
             image = Image.open(uploaded_file).convert("RGBA")
             
-            # Si se marcó la opción de girar
+            # Giramos si corresponde
             if rotate_image:
                 image = image.rotate(90, expand=True)
             
@@ -86,7 +81,7 @@ def main():
             card_width = template_width / cols
             card_height = template_height / rows
             
-            # Calculamos posiciones x, y, w, h
+            # Calculamos las posiciones de cada tarjeta
             grid_positions = []
             for row in range(rows):
                 for col in range(cols):
@@ -94,21 +89,21 @@ def main():
                     y = row * card_height
                     grid_positions.append((x, y, card_width, card_height))
             
-            # Generamos una vista previa para mostrar en Streamlit
+            # Generamos preview
             preview = template.copy()
             for x, y, w, h in grid_positions:
                 img_adjusted = adjust_image(image, (int(w), int(h)))
                 preview.paste(img_adjusted, (int(x), int(y)))
             
-            st.image(preview, caption="Vista previa de la plantilla con la imagen reemplazada", use_column_width=True)
+            st.image(preview, caption="Vista previa de la plantilla con la imagen", use_column_width=True)
             
-            # Creamos el PDF
-            pdf_output = create_pdf(template, image, grid_positions)
+            # Creamos el PDF y obtenemos sus bytes
+            pdf_bytes = create_pdf(template, image, grid_positions)
             
             st.success("¡PDF generado con éxito!")
             st.download_button(
                 "Descargar PDF",
-                data=pdf_output.getvalue(),
+                data=pdf_bytes,
                 file_name="tarjetas_output.pdf",
                 mime="application/pdf"
             )
