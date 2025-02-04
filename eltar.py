@@ -4,36 +4,32 @@ from fpdf import FPDF
 import io
 
 def adjust_image(image):
-    # Ajustar la imagen a un tamaño fijo de 5cm x 9cm (500x900 px en 300 dpi aprox)
-    target_size = (600, 1800)  # Ajuste basado en 300 dpi
+    # Ajustar la imagen para que encaje en la plantilla
+    target_size = (500, 900)  # 5 cm x 9 cm en 100 dpi
     image = ImageOps.fit(image, target_size, method=Image.LANCZOS)
     return image
 
-def create_pdf(image, output_filename="tarjetas_output.pdf"):
-    # Definir dimensiones del PDF en mm
-    pdf_width = 58.5 * 10  # cm to mm
-    pdf_height = 43 * 10  # cm to mm
-    card_width = 50  # 5 cm en mm
-    card_height = 90  # 9 cm en mm
+def create_pdf(template_path, image, output_filename="tarjetas_output.pdf"):
+    # Cargar la plantilla base
+    template = Image.open(template_path)
+    pdf_width, pdf_height = template.size  # Tomar el tamaño de la plantilla
+    card_width, card_height = (500, 900)  # Tamaño de cada tarjeta
     
-    # Crear un PDF en alta calidad
-    pdf = FPDF(unit="mm", format=[pdf_width, pdf_height])
+    # Crear PDF
+    pdf = FPDF(unit="pt", format=[pdf_width, pdf_height])
     pdf.add_page()
     
-    # Ajustar la imagen
+    # Guardar plantilla en un archivo temporal
+    temp_template_path = "temp_template.jpg"
+    template.convert("RGB").save(temp_template_path, format="JPEG", quality=100)
+    pdf.image(temp_template_path, x=0, y=0, w=pdf_width, h=pdf_height)
+    
+    # Ajustar la imagen a la disposición de las tarjetas
     image = adjust_image(image)
-    
-    # Guardar imagen en memoria en alta calidad
-    img_io = io.BytesIO()
-    image = image.convert("RGB")  # Convertir a RGB para evitar errores con PNGs con transparencia
-    image.save(img_io, format="JPEG", quality=100)  # Guardar en máxima calidad
-    img_io.seek(0)
-    
-    # Guardar temporalmente la imagen
-    temp_img_path = "temp_image.jpg"
+    temp_img_path = "temp_card.jpg"
     image.save(temp_img_path, format="JPEG", quality=100)
     
-    # Agregar 27 tarjetas en la disposición correcta
+    # Ubicar la imagen en la disposición de la plantilla
     for row in range(3):  # 3 filas
         for col in range(9):  # 9 columnas
             x = col * card_width
@@ -46,30 +42,28 @@ def create_pdf(image, output_filename="tarjetas_output.pdf"):
     pdf_output.seek(0)
     return pdf_output
 
-def preview_layout(image):
-    st.write("### Vista previa de la disposición")
-    preview_image = Image.new("RGB", (900, 300), "white")  # Vista previa en Streamlit
-    for row in range(3):
-        for col in range(9):
-            x = col * 100
-            y = row * 100
-            preview_image.paste(image.resize((100, 100)), (x, y))
-    st.image(preview_image, caption="Vista previa de las tarjetas", use_column_width=True)
-
 def main():
     st.title("Generador de PDF de Tarjetas")
-    st.write("Subí una imagen y generá un PDF con 27 tarjetas en la disposición correcta.")
+    st.write("Subí la imagen y reemplazará las tarjetas de la plantilla correctamente.")
     
+    template_path = "tarjetas, dos paginas, plantilla.pdf (58.5 x 43 cm).png"
     uploaded_file = st.file_uploader("Subí la imagen de la tarjeta", type=["png", "jpg", "jpeg"])
     
     if uploaded_file is not None:
         image = Image.open(uploaded_file).convert("RGBA")
-        image = adjust_image(image)
         
-        # Mostrar vista previa usando Streamlit
-        preview_layout(image)
+        # Mostrar vista previa de la plantilla con la imagen reemplazada
+        template = Image.open(template_path)
+        preview = template.copy()
+        for row in range(3):
+            for col in range(9):
+                x = col * 500
+                y = row * 900
+                preview.paste(adjust_image(image), (x, y))
         
-        pdf_output = create_pdf(image)
+        st.image(preview, caption="Vista previa de la plantilla con la imagen reemplazada", use_column_width=True)
+        
+        pdf_output = create_pdf(template_path, image)
         
         st.success("PDF generado con éxito!")
         st.download_button("Descargar PDF", pdf_output, file_name="tarjetas_output.pdf", mime="application/pdf")
