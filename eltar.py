@@ -3,13 +3,6 @@ from PIL import Image, ImageOps
 from fpdf import FPDF
 import io
 
-# Intentar importar matplotlib, pero manejar la excepción si no está disponible
-try:
-    import matplotlib.pyplot as plt
-    MATPLOTLIB_AVAILABLE = True
-except ImportError:
-    MATPLOTLIB_AVAILABLE = False
-
 def adjust_image(image):
     # Ajustar la imagen a un tamaño fijo de 5cm x 9cm (500x900 px en 100 dpi aprox)
     target_size = (500, 900)
@@ -54,20 +47,16 @@ def create_pdf(image, output_filename="tarjetas_output.pdf"):
     return pdf_output
 
 def preview_layout(image):
-    if MATPLOTLIB_AVAILABLE:
-        fig, ax = plt.subplots(figsize=(10, 7))
-        ax.set_xticks([])
-        ax.set_yticks([])
-        ax.set_title("Vista previa de la disposición")
-        
-        for row in range(3):
-            for col in range(9):
-                x, y = col, 2 - row  # Ajustar el orden para que se vea bien en la previsualización
-                ax.imshow(image, extent=[x, x+1, y, y+1])
-        
-        st.pyplot(fig)
-    else:
-        st.warning("Matplotlib no está disponible, por lo que no se puede mostrar la vista previa.")
+    st.write("### Vista previa de la disposición")
+    canvas_width = 900  # Ancho en px
+    canvas_height = 300  # Alto en px
+    preview_image = Image.new("RGB", (canvas_width, canvas_height), "white")
+    for row in range(3):
+        for col in range(9):
+            x = col * 100
+            y = row * 100
+            preview_image.paste(image, (x, y))
+    st.image(preview_image, caption="Vista previa de las tarjetas", use_column_width=True)
 
 def main():
     st.title("Generador de PDF de Tarjetas")
@@ -79,10 +68,8 @@ def main():
         image = Image.open(uploaded_file).convert("RGBA")
         image = adjust_image(image)
         
-        # Mostrar vista previa solo si matplotlib está disponible
-        if MATPLOTLIB_AVAILABLE:
-            st.write("Vista previa de la disposición:")
-            preview_layout(image)
+        # Mostrar vista previa usando Streamlit
+        preview_layout(image)
         
         pdf_output = create_pdf(image)
         
