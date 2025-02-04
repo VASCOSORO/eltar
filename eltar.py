@@ -4,17 +4,17 @@ from fpdf import FPDF
 import io
 
 def adjust_image(image):
-    # Ajustar la imagen a un tamaño fijo de 5cm x 9cm (500x900 px en 100 dpi aprox)
-    target_size = (500, 900)
+    # Ajustar la imagen a un tamaño fijo de 5cm x 9cm (500x900 px en 300 dpi aprox)
+    target_size = (600, 1800)  # Ajuste basado en 300 dpi
     image = ImageOps.fit(image, target_size, method=Image.LANCZOS)
     return image
 
 def create_pdf(image, output_filename="tarjetas_output.pdf"):
-    # Definir dimensiones del PDF
+    # Definir dimensiones del PDF en mm
     pdf_width = 58.5 * 10  # cm to mm
     pdf_height = 43 * 10  # cm to mm
-    card_width = 5 * 10  # 5 cm en mm
-    card_height = 9 * 10  # 9 cm en mm
+    card_width = 50  # 5 cm en mm
+    card_height = 90  # 9 cm en mm
     
     # Crear un PDF en alta calidad
     pdf = FPDF(unit="mm", format=[pdf_width, pdf_height])
@@ -26,12 +26,12 @@ def create_pdf(image, output_filename="tarjetas_output.pdf"):
     # Guardar imagen en memoria en alta calidad
     img_io = io.BytesIO()
     image = image.convert("RGB")  # Convertir a RGB para evitar errores con PNGs con transparencia
-    image.save(img_io, format="JPEG", quality=95)  # Guardar en alta calidad
+    image.save(img_io, format="JPEG", quality=100)  # Guardar en máxima calidad
     img_io.seek(0)
     
     # Guardar temporalmente la imagen
     temp_img_path = "temp_image.jpg"
-    image.save(temp_img_path, format="JPEG", quality=95)
+    image.save(temp_img_path, format="JPEG", quality=100)
     
     # Agregar 27 tarjetas en la disposición correcta
     for row in range(3):  # 3 filas
@@ -48,14 +48,12 @@ def create_pdf(image, output_filename="tarjetas_output.pdf"):
 
 def preview_layout(image):
     st.write("### Vista previa de la disposición")
-    canvas_width = 900  # Ancho en px
-    canvas_height = 300  # Alto en px
-    preview_image = Image.new("RGB", (canvas_width, canvas_height), "white")
+    preview_image = Image.new("RGB", (900, 300), "white")  # Vista previa en Streamlit
     for row in range(3):
         for col in range(9):
             x = col * 100
             y = row * 100
-            preview_image.paste(image, (x, y))
+            preview_image.paste(image.resize((100, 100)), (x, y))
     st.image(preview_image, caption="Vista previa de las tarjetas", use_column_width=True)
 
 def main():
