@@ -95,7 +95,7 @@ def create_pdf(
     page_w_cm, page_h_cm,
     ml_cm, mr_cm, mt_cm, mb_cm,
     cols, rows,
-    target_dpi=300
+    target_dpi=150
 ):
     """
     Genera un PDF con la misma lógica y mete la imagen compuesta
