@@ -94,12 +94,12 @@ def create_pdf(
     composed_image,
     page_w_cm, page_h_cm,
     ml_cm, mr_cm, mt_cm, mb_cm,
-    cols, rows
+    cols, rows,
+    target_dpi=300
 ):
     """
-    Genera un PDF con la misma lógica:
-      - columnas en sup/inf
-      - filas en izq/der
+    Genera un PDF con la misma lógica y mete la imagen compuesta
+    a resolución de impresión (target_dpi) y sin pérdida (PNG).
     """
     pw_pt = page_w_cm * CM_TO_PT
     ph_pt = page_h_cm * CM_TO_PT
@@ -107,9 +107,6 @@ def create_pdf(
     mr_pt = mr_cm * CM_TO_PT
     mt_pt = mt_cm * CM_TO_PT
     mb_pt = mb_cm * CM_TO_PT
-
-    temp_path = "temp_comp.jpg"
-    composed_image.convert("RGB").save(temp_path, "JPEG", quality=100)
 
     c_w, c_h = composed_image.size
     cw_pt = pw_pt - (ml_pt + mr_pt)
@@ -121,8 +118,19 @@ def create_pdf(
     x_pos = ml_pt + (cw_pt - final_w) / 2
     y_pos = mt_pt + (ch_pt - final_h) / 2
 
+    # --- NUEVO: preparar la imagen a píxeles reales de impresión (300 DPI por default)
+    target_px_w = int(round((final_w / 72.0) * target_dpi))   # 1 pt = 1/72 in
+    target_px_h = int(round((final_h / 72.0) * target_dpi))
+    hires = composed_image.resize((target_px_w, target_px_h), Image.LANCZOS)
+
+    temp_path = "temp_comp.png"
+    # PNG sin pérdida (nivel de compresión 0 = rápido, sin pérdida perceptual)
+    hires.convert("RGBA").save(temp_path, "PNG", compress_level=0)
+
     pdf = FPDF(unit="pt", format=[pw_pt, ph_pt])
+    pdf.set_auto_page_break(False)
     pdf.add_page()
+    # Importante: el PNG se incrusta sin pérdida; FPDF lo escala a w/h en puntos
     pdf.image(temp_path, x=x_pos, y=y_pos, w=final_w, h=final_h)
 
     pdf.set_draw_color(255, 0, 0)
@@ -185,22 +193,31 @@ def auto_rotate_for_format(img, chosen_format):
             return img
 
 # ---------------------------
-# 3) COMPOSICIÓN DE LA PLANTILLA
+# 3) COMPOSICIÓN DE LA PLANTILLA (HD)
 # ---------------------------
 def adjust_image(image, size):
     return ImageOps.fit(image, size, method=Image.LANCZOS)
 
-def compose_template(template_path, user_image, cols, rows):
-    template = Image.open(template_path).convert("RGBA")
-    t_w, t_h = template.size
-    card_w = t_w / cols
-    card_h = t_h / rows
-    composed = template.copy()
+def compose_template_hd(user_image, cols, rows, content_w_pt, content_h_pt, target_dpi=300):
+    """
+    Compone la grilla a tamaño de impresión real (300 DPI) según el área útil.
+    No depende del bitmap 'tarjetas.png' para el tamaño.
+    """
+    # área útil en píxeles a DPI objetivo
+    content_w_px = int(round((content_w_pt / 72.0) * target_dpi))
+    content_h_px = int(round((content_h_pt / 72.0) * target_dpi))
+
+    # canvas RGBA de la grilla completa
+    composed = Image.new("RGBA", (content_w_px, content_h_px), (255, 255, 255, 0))
+
+    card_w = content_w_px // cols
+    card_h = content_h_px // rows
+
     for rr in range(rows):
         for cc in range(cols):
-            x = int(cc * card_w)
-            y = int(rr * card_h)
-            piece = adjust_image(user_image, (int(card_w), int(card_h)))
+            x = cc * card_w
+            y = rr * card_h
+            piece = adjust_image(user_image, (card_w, card_h))
             composed.paste(piece, (x, y))
     return composed
 
@@ -228,7 +245,8 @@ def main():
     if uploaded_file:
         try:
             user_img = Image.open(uploaded_file).convert("RGBA")
-            template_path = "tarjetas.png"
+            # Nota: mantenemos el path aunque no lo usamos para el tamaño final
+            template_path = "tarjetas.png"  # opcional/estético
 
             # Selectbox para vista previa
             preview_option = st.selectbox(
@@ -238,9 +256,21 @@ def main():
 
             # 1) Rotamos automáticamente según el preview
             rotated_img = auto_rotate_for_format(user_img, preview_option)
-            # 2) Componemos la plantilla
+            # 2) Config según el preview
             (pw_cm, ph_cm, ml_cm, mr_cm, mt_cm, mb_cm, colz, rowz) = get_config(preview_option)
-            composed_prev = compose_template(template_path, rotated_img, colz, rowz)
+
+            # Área útil en puntos
+            pw_pt = pw_cm * CM_TO_PT
+            ph_pt = ph_cm * CM_TO_PT
+            ml_pt = ml_cm * CM_TO_PT
+            mr_pt = mr_cm * CM_TO_PT
+            mt_pt = mt_cm * CM_TO_PT
+            mb_pt = mb_cm * CM_TO_PT
+            content_w_pt = pw_pt - (ml_pt + mr_pt)
+            content_h_pt = ph_pt - (mt_pt + mb_pt)
+
+            # 3) Componemos HD para preview (rápido, 300 DPI)
+            composed_prev = compose_template_hd(rotated_img, colz, rowz, content_w_pt, content_h_pt, target_dpi=300)
 
             # Vista previa
             preview_img = draw_preview_image(
@@ -257,19 +287,26 @@ def main():
             st.image(preview_img, caption=f"Vista previa: {preview_option}")
 
             st.write("---")
-            st.write("**Descargar en cada formato (rotación automática según su lógica):**")
+            st.write("**Descargar en cada formato (rotación automática según su lógica, calidad de impresión):**")
 
             # Botón Súper A3
             if st.button("Descargar Súper A3 (9×3=27)"):
-                # Re-rotamos
                 rot_sa3 = auto_rotate_for_format(user_img, "Súper A3 (9×3=27)")
-                comp_sa3 = compose_template(template_path, rot_sa3, 9, 3)
+                (pw, ph, ml, mr, mt, mb, c, r) = get_config("Súper A3 (9×3=27)")
+
+                # Compose HD directo a 300 DPI
+                pw_pt = pw * CM_TO_PT; ph_pt = ph * CM_TO_PT
+                content_w_pt = pw_pt - (ml * CM_TO_PT + mr * CM_TO_PT)
+                content_h_pt = ph_pt - (mt * CM_TO_PT + mb * CM_TO_PT)
+                comp_sa3 = compose_template_hd(rot_sa3, c, r, content_w_pt, content_h_pt, target_dpi=300)
+
                 pdf_sa3 = create_pdf(
                     comp_sa3,
-                    47.5, 32.5,
-                    1.0, 1.0,
-                    2.57, 2.57,
-                    9, 3
+                    pw, ph,
+                    ml, mr,
+                    mt, mb,
+                    c, r,
+                    target_dpi=300
                 )
                 st.download_button(
                     "Bajar PDF Súper A3",
@@ -281,13 +318,20 @@ def main():
             # Botón A3
             if st.button("Descargar A3 (8×3=24)"):
                 rot_a3 = auto_rotate_for_format(user_img, "A3 (8×3=24)")
-                comp_a3 = compose_template(template_path, rot_a3, 8, 3)
+                (pw, ph, ml, mr, mt, mb, c, r) = get_config("A3 (8×3=24)")
+
+                pw_pt = pw * CM_TO_PT; ph_pt = ph * CM_TO_PT
+                content_w_pt = pw_pt - (ml * CM_TO_PT + mr * CM_TO_PT)
+                content_h_pt = ph_pt - (mt * CM_TO_PT + mb * CM_TO_PT)
+                comp_a3 = compose_template_hd(rot_a3, c, r, content_w_pt, content_h_pt, target_dpi=300)
+
                 pdf_a3 = create_pdf(
                     comp_a3,
-                    42.0, 29.7,
-                    1.0, 1.0,
-                    1.0, 1.0,
-                    8, 3
+                    pw, ph,
+                    ml, mr,
+                    mt, mb,
+                    c, r,
+                    target_dpi=300
                 )
                 st.download_button(
                     "Bajar PDF A3",
@@ -299,13 +343,20 @@ def main():
             # Botón A4
             if st.button("Descargar A4 (3×4=12)"):
                 rot_a4 = auto_rotate_for_format(user_img, "A4 (3×4=12)")
-                comp_a4 = compose_template(template_path, rot_a4, 3, 4)
+                (pw, ph, ml, mr, mt, mb, c, r) = get_config("A4 (3×4=12)")
+
+                pw_pt = pw * CM_TO_PT; ph_pt = ph * CM_TO_PT
+                content_w_pt = pw_pt - (ml * CM_TO_PT + mr * CM_TO_PT)
+                content_h_pt = ph_pt - (mt * CM_TO_PT + mb * CM_TO_PT)
+                comp_a4 = compose_template_hd(rot_a4, c, r, content_w_pt, content_h_pt, target_dpi=300)
+
                 pdf_a4 = create_pdf(
                     comp_a4,
-                    29.7, 21.0,
-                    1.0, 1.0,
-                    1.0, 1.0,
-                    3, 4
+                    pw, ph,
+                    ml, mr,
+                    mt, mb,
+                    c, r,
+                    target_dpi=300
                 )
                 st.download_button(
                     "Bajar PDF A4",
@@ -315,7 +366,8 @@ def main():
                 )
 
         except FileNotFoundError:
-            st.error("No se encontró la plantilla 'tarjetas.png'. Ponela junto al código.")
+            # Ya no dependemos de 'tarjetas.png' para el tamaño/calidad, pero lo dejo por compatibilidad
+            st.warning("Opcional: si usabas 'tarjetas.png' solo como referencia, ya no es necesario para la calidad.")
         except Exception as err:
             st.error(f"Ocurrió un error: {err}")
 
