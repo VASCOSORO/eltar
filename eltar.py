@@ -225,9 +225,10 @@ def auto_rotate_for_format(img, chosen_format):
     return img
 
 
-def compose_template_hd(user_image, cols, rows, content_w_pt, content_h_pt, target_dpi=300):
+def compose_template_hd(user_image, cols, rows, content_w_pt, content_h_pt, target_dpi=300, scaling_mode="fit"):
     """
     Compone la grilla. CORRECCIÓN DE DESFASE.
+    scaling_mode: 'fit' (recortar), 'stretch' (estirar), 'pad' (encajar)
     """
     max_w_px = int(round((content_w_pt / 72.0) * target_dpi))
     max_h_px = int(round((content_h_pt / 72.0) * target_dpi))
@@ -239,10 +240,19 @@ def compose_template_hd(user_image, cols, rows, content_w_pt, content_h_pt, targ
     exact_total_w = card_w * cols
     exact_total_h = card_h * rows
 
-    # Usamos RGBA para componer (más fácil manipular capas) pero luego aplanaremos
+    # Usamos RGBA para componer
     composed = Image.new("RGBA", (exact_total_w, exact_total_h), (255, 255, 255, 0))
 
-    card_img = ImageOps.fit(user_image, (card_w, card_h), method=Image.LANCZOS)
+    # --- LÓGICA DE ESCALADO ---
+    if scaling_mode == "stretch":
+        # Estirar: Ignora proporción, llena todo el cuadro (puede deformar)
+        card_img = user_image.resize((card_w, card_h), resample=Image.LANCZOS)
+    elif scaling_mode == "pad":
+        # Encajar: Mantiene proporción, agrega bordes blancos si sobra espacio
+        card_img = ImageOps.pad(user_image, (card_w, card_h), method=Image.LANCZOS, color=(255, 255, 255, 0), centering=(0.5, 0.5))
+    else:
+        # Fit (Default): Hace zoom para llenar todo, recorta lo que sobra
+        card_img = ImageOps.fit(user_image, (card_w, card_h), method=Image.LANCZOS)
 
     for rr in range(rows):
         for cc in range(cols):
@@ -288,6 +298,19 @@ def main():
                 "Seleccioná el formato:",
                 ["Súper A3 (9×3=27)", "A3 (8×3=24)", "A4 (3×4=12)"]
             )
+            
+            # --- NUEVO SELECTOR DE AJUSTE ---
+            st.write("### 🖼️ Ajuste de Imagen")
+            fit_mode = st.selectbox(
+                "¿Cómo querés que entre la imagen?",
+                options=["pad", "stretch", "fit"],
+                format_func=lambda x: {
+                    "pad": "Encajar (Sin cortes, bordes blancos)",
+                    "stretch": "Estirar (Llenar todo, puede deformar)",
+                    "fit": "Recortar (Llenar todo, zoom auto)"
+                }[x]
+            )
+
             st.info(f"📐 Tu imagen: {user_img.width} x {user_img.height} px")
 
         (pw_cm, ph_cm, ml_cm, mr_cm, mt_cm, mb_cm, colz, rowz) = get_config(preview_option)
@@ -300,8 +323,8 @@ def main():
 
         rotated_img_prev = auto_rotate_for_format(user_img, preview_option)
         
-        # Preview rápida (72 DPI)
-        composed_prev = compose_template_hd(rotated_img_prev, colz, rowz, content_w_pt, content_h_pt, target_dpi=72)
+        # Preview rápida (72 DPI) - Pasamos el modo de ajuste
+        composed_prev = compose_template_hd(rotated_img_prev, colz, rowz, content_w_pt, content_h_pt, target_dpi=72, scaling_mode=fit_mode)
         preview_viz = draw_preview_image(composed_prev, pw_cm, ph_cm, ml_cm, mr_cm, mt_cm, mb_cm, colz, rowz)
 
         with c_preview:
@@ -332,8 +355,8 @@ def main():
                             
                             rot = auto_rotate_for_format(user_img, conf_key)
                             
-                            # Generamos la composición en memoria a 300 DPI
-                            comp = compose_template_hd(rot, c, r, cw_p, ch_p, target_dpi=300)
+                            # Generamos la composición en memoria a 300 DPI - Pasamos el modo de ajuste
+                            comp = compose_template_hd(rot, c, r, cw_p, ch_p, target_dpi=300, scaling_mode=fit_mode)
                             
                             # Creamos el PDF compatible con FPDF 1.7.2
                             pdf_bytes = create_pdf(comp, pw, ph, ml, mr, mt, mb, c, r, target_dpi=300)
