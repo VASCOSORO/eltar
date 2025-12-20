@@ -74,37 +74,43 @@ st.markdown("""
         font-weight: 400;
     }
 
-    /* 2. FOOTER PRO MINIMALISTA */
+    /* 2. FOOTER ESTILO 'MOSTRATE' (Minimalista & Clean) */
     .footer {
         position: fixed;
         left: 0;
         bottom: 0;
         width: 100%;
-        background-color: rgba(255, 255, 255, 0.95);
-        border-top: 1px solid #e5e7eb;
+        background-color: #ffffff; /* Blanco puro para contraste limpio */
+        border-top: 1px solid #f3f4f6;
         text-align: center;
-        padding: 12px 0;
-        font-family: system-ui, -apple-system, sans-serif;
-        font-size: 0.85rem;
-        color: #9ca3af;
+        padding: 15px 0;
+        font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        font-size: 0.8rem;
+        color: #6b7280; /* Gris medio elegante */
         z-index: 1000;
-        backdrop-filter: blur(8px);
-        letter-spacing: 0.5px;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 6px;
+        box-shadow: 0 -4px 6px -1px rgba(0, 0, 0, 0.02);
     }
 
-    /* Link VASCO elegante y serio */
+    /* Link VASCO sólido y profesional */
     .vasco-link {
-        font-weight: 700;
+        font-weight: 800;
+        text-transform: uppercase;
         text-decoration: none;
-        color: #5b21b6; /* Violeta serio */
-        transition: all 0.2s ease;
-        padding-bottom: 1px;
-        border-bottom: 2px solid transparent;
+        color: #111827; /* Casi negro */
+        letter-spacing: 1px;
+        transition: color 0.2s ease;
+        padding: 2px 6px;
+        border-radius: 4px;
+        background-color: #f3f4f6;
     }
 
     .vasco-link:hover {
-        color: #4c1d95;
-        border-bottom: 2px solid #4c1d95;
+        color: #7c3aed; /* Acento violeta al hover */
+        background-color: #ede9fe;
         cursor: pointer;
     }
 
@@ -191,7 +197,7 @@ def draw_preview_image(composed_image, page_w_cm, page_h_cm, ml_cm, mr_cm, mt_cm
         draw.line([(x_col, yb), (x_col, page_h_px)], fill=guide_color, width=1)
 
     for row in range(1, rows):
-        y_row = y_pos_px + int(round(row * final_h_px / rows))
+        y_row = y_pos + (row * final_h_px / rows)
         draw.line([(0, y_row), (x_pos_px, y_row)], fill=guide_color, width=1)
         draw.line([(xr, y_row), (page_w_px, y_row)], fill=guide_color, width=1)
 
@@ -433,7 +439,7 @@ def main():
     # --- FOOTER PRO MINIMALISTA ---
     st.markdown("""
         <div class="footer">
-            Powered by <a href="https://www.instagram.com/" target="_blank" class="vasco-link">VASCO</a>
+            Powered by <a href="https://www.instagram.com/vasco.soro" target="_blank" class="vasco-link">VASCO</a>
         </div>
     """, unsafe_allow_html=True)
 
