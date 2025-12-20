@@ -12,10 +12,10 @@ st.set_page_config(
     page_icon="🖨️"
 )
 
-# --- ESTILOS CSS MODERNOS & ANIMACIONES ---
+# --- ESTILOS CSS MODERNOS & TEMA VIOLETA ---
 st.markdown("""
     <style>
-    /* 1. ANIMACIÓN DE ENTRADA (TIPO REACT/SPA) */
+    /* 1. ANIMACIÓN DE ENTRADA */
     @keyframes fadeInUp {
         from { 
             opacity: 0; 
@@ -28,72 +28,95 @@ st.markdown("""
     }
     
     .stApp {
-        background-color: #f8f9fa;
-        /* Aplicamos la animación al contenedor principal */
+        /* Fondo sutilmente violeta/lavanda */
+        background: linear-gradient(135deg, #f5f3ff 0%, #ffffff 100%);
         animation: fadeInUp 0.6s ease-out both; 
     }
 
+    /* BOTONES ESTILO VIOLETA PRO */
     div.stButton > button {
+        background-color: #7c3aed !important; /* Violeta moderno */
+        color: white !important;
         width: 100%;
         border-radius: 8px;
         font-weight: 600;
-        padding: 0.5rem 1rem;
-        transition: all 0.3s ease;
+        padding: 0.6rem 1rem;
+        border: none;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        box-shadow: 0 4px 6px -1px rgba(124, 58, 237, 0.2);
     }
+    
     div.stButton > button:hover {
+        background-color: #6d28d9 !important; /* Violeta más oscuro al hover */
         transform: translateY(-2px);
-        box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        box-shadow: 0 10px 15px -3px rgba(124, 58, 237, 0.3);
     }
+    
+    div.stButton > button:active {
+        transform: translateY(0);
+    }
+
+    /* ENCABEZADOS */
     .header-style {
-        font-size: 2.5rem;
-        font-weight: 700;
-        color: #1a1a1a;
-        margin-bottom: 0.5rem;
+        font-family: 'Segoe UI', sans-serif;
+        font-size: 2.8rem;
+        font-weight: 800;
+        color: #4c1d95; /* Violeta muy oscuro */
+        margin-bottom: 0.2rem;
         text-align: center;
+        letter-spacing: -1px;
     }
     .sub-header {
         font-size: 1.1rem;
-        color: #666;
+        color: #6b7280;
         text-align: center;
-        margin-bottom: 2rem;
+        margin-bottom: 2.5rem;
+        font-weight: 400;
     }
 
-    /* 2. FOOTER ESTILO 'STICKY' */
+    /* 2. FOOTER PRO MINIMALISTA */
     .footer {
         position: fixed;
         left: 0;
         bottom: 0;
         width: 100%;
         background-color: rgba(255, 255, 255, 0.95);
-        border-top: 1px solid #eaeaea;
+        border-top: 1px solid #e5e7eb;
         text-align: center;
-        padding: 10px 0;
-        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-        font-size: 0.9rem;
-        color: #555;
+        padding: 12px 0;
+        font-family: system-ui, -apple-system, sans-serif;
+        font-size: 0.85rem;
+        color: #9ca3af;
         z-index: 1000;
-        backdrop-filter: blur(5px);
+        backdrop-filter: blur(8px);
+        letter-spacing: 0.5px;
     }
 
-    /* Estilo del link VASCO (Gradiente Instagram) */
+    /* Link VASCO elegante y serio */
     .vasco-link {
-        font-weight: 800;
+        font-weight: 700;
         text-decoration: none;
-        background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        display: inline-block;
-        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        color: #5b21b6; /* Violeta serio */
+        transition: all 0.2s ease;
+        padding-bottom: 1px;
+        border-bottom: 2px solid transparent;
     }
 
     .vasco-link:hover {
-        transform: scale(1.15) rotate(2deg);
+        color: #4c1d95;
+        border-bottom: 2px solid #4c1d95;
         cursor: pointer;
     }
 
-    /* Espacio extra abajo para que el footer no tape el botón */
+    /* Ajuste para que el footer no tape contenido */
     .block-container {
-        padding-bottom: 80px;
+        padding-bottom: 90px;
+    }
+    
+    /* Toast personalizado (intento de override) */
+    div[data-testid="stToast"] {
+        background-color: #ffffff;
+        border-left: 5px solid #7c3aed;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -106,7 +129,8 @@ CM_TO_PT = 28.3465
 
 def draw_preview_image(composed_image, page_w_cm, page_h_cm, ml_cm, mr_cm, mt_cm, mb_cm, cols, rows):
     """
-    Genera una vista previa rápida con líneas de guía visuales (rojas).
+    Genera una vista previa rápida con líneas de guía visuales.
+    Ahora usa violeta para las guías para combinar con el tema.
     """
     pw_pt = page_w_cm * CM_TO_PT
     ph_pt = page_h_cm * CM_TO_PT
@@ -140,13 +164,13 @@ def draw_preview_image(composed_image, page_w_cm, page_h_cm, ml_cm, mr_cm, mt_cm
 
     # Usamos LANCZOS para buena calidad en pantalla
     scaled = composed_image.resize((final_w_px, final_h_px), Image.LANCZOS)
-    # Convertimos a RGB para evitar conflictos de transparencia en visualización
     if scaled.mode == 'RGBA':
         scaled = scaled.convert('RGB')
         
     preview.paste(scaled, (x_pos_px, y_pos_px))
 
-    guide_color = (220, 53, 69)
+    # Color de guías: Violeta rojizo para que destaque pero combine
+    guide_color = (139, 92, 246) # Violet-500
     lw = 2
     
     xr = x_pos_px + final_w_px
@@ -197,23 +221,19 @@ def create_pdf(composed_image, page_w_cm, page_h_cm, ml_cm, mr_cm, mt_cm, mb_cm,
     y_pos = mt_pt + (ch_area_pt - final_h_pt) / 2
 
     # --- PREPARACIÓN DE IMAGEN (FIX para FPDF 1.7.2) ---
-    # 1. Calcular resolución real en pixeles
     target_px_w = int(round((final_w_pt / 72.0) * target_dpi))
     target_px_h = int(round((final_h_pt / 72.0) * target_dpi))
     
     hires = composed_image.resize((target_px_w, target_px_h), Image.LANCZOS)
     
-    # 2. IMPORTANTE: Convertir a RGB (Quitar canal Alfa/Transparencia)
-    # FPDF viejo falla con RGBA o pone fondos negros.
     if hires.mode == 'RGBA':
         background = Image.new("RGB", hires.size, (255, 255, 255))
-        background.paste(hires, mask=hires.split()[3]) # 3 is alpha channel
+        background.paste(hires, mask=hires.split()[3])
         hires = background
     elif hires.mode != 'RGB':
         hires = hires.convert('RGB')
 
     temp_path = f"temp_{int(page_w_cm)}x{int(page_h_cm)}.jpg"
-    # Usamos JPEG calidad máxima para evitar problemas de compatibilidad en FPDF viejo
     hires.save(temp_path, "JPEG", quality=100, optimize=True)
 
     # --- GENERACIÓN PDF ---
@@ -221,7 +241,6 @@ def create_pdf(composed_image, page_w_cm, page_h_cm, ml_cm, mr_cm, mt_cm, mb_cm,
     pdf.set_auto_page_break(False)
     pdf.add_page()
     
-    # Insertar imagen
     pdf.image(temp_path, x=x_pos, y=y_pos, w=final_w_pt, h=final_h_pt)
 
     pdf.set_draw_color(0, 0, 0)
@@ -230,7 +249,6 @@ def create_pdf(composed_image, page_w_cm, page_h_cm, ml_cm, mr_cm, mt_cm, mb_cm,
     xr = x_pos + final_w_pt
     yb = y_pos + final_h_pt
 
-    # Líneas de corte
     pdf.line(x_pos, 0, x_pos, y_pos)
     pdf.line(x_pos, yb, x_pos, ph_pt)
     pdf.line(xr, 0, xr, y_pos)
@@ -252,8 +270,6 @@ def create_pdf(composed_image, page_w_cm, page_h_cm, ml_cm, mr_cm, mt_cm, mb_cm,
         pdf.line(xr, y_row, pw_pt, y_row)
 
     pdf_str = pdf.output(dest='S')
-    # En FPDF 1.7.2 output devuelve string en py3 (bytes mal codificados a veces),
-    # o latin-1 string. Lo convertimos a bytes seguramente.
     if isinstance(pdf_str, str):
         pdf_bytes = pdf_str.encode('latin-1')
     else:
@@ -280,31 +296,24 @@ def auto_rotate_for_format(img, chosen_format):
 
 def compose_template_hd(user_image, cols, rows, content_w_pt, content_h_pt, target_dpi=300, scaling_mode="fit"):
     """
-    Compone la grilla. CORRECCIÓN DE DESFASE.
-    scaling_mode: 'fit' (recortar), 'stretch' (estirar), 'pad' (encajar)
+    Compone la grilla.
     """
     max_w_px = int(round((content_w_pt / 72.0) * target_dpi))
     max_h_px = int(round((content_h_pt / 72.0) * target_dpi))
 
-    # División entera para evitar decimales flotantes
     card_w = max_w_px // cols
     card_h = max_h_px // rows
     
     exact_total_w = card_w * cols
     exact_total_h = card_h * rows
 
-    # Usamos RGBA para componer
     composed = Image.new("RGBA", (exact_total_w, exact_total_h), (255, 255, 255, 0))
 
-    # --- LÓGICA DE ESCALADO ---
     if scaling_mode == "stretch":
-        # Estirar: Ignora proporción, llena todo el cuadro (puede deformar)
         card_img = user_image.resize((card_w, card_h), resample=Image.LANCZOS)
     elif scaling_mode == "pad":
-        # Encajar: Mantiene proporción, agrega bordes blancos si sobra espacio
         card_img = ImageOps.pad(user_image, (card_w, card_h), method=Image.LANCZOS, color=(255, 255, 255, 0), centering=(0.5, 0.5))
     else:
-        # Fit (Default): Hace zoom para llenar todo, recorta lo que sobra
         card_img = ImageOps.fit(user_image, (card_w, card_h), method=Image.LANCZOS)
 
     for rr in range(rows):
@@ -352,7 +361,6 @@ def main():
                 ["Súper A3 (9×3=27)", "A3 (8×3=24)", "A4 (3×4=12)"]
             )
             
-            # --- NUEVO SELECTOR DE AJUSTE ---
             st.write("### 🖼️ Ajuste de Imagen")
             fit_mode = st.selectbox(
                 "¿Cómo querés que entre la imagen?",
@@ -376,12 +384,11 @@ def main():
 
         rotated_img_prev = auto_rotate_for_format(user_img, preview_option)
         
-        # Preview rápida (72 DPI) - Pasamos el modo de ajuste
         composed_prev = compose_template_hd(rotated_img_prev, colz, rowz, content_w_pt, content_h_pt, target_dpi=72, scaling_mode=fit_mode)
         preview_viz = draw_preview_image(composed_prev, pw_cm, ph_cm, ml_cm, mr_cm, mt_cm, mb_cm, colz, rowz)
 
         with c_preview:
-            st.image(preview_viz, caption="Vista Previa (Guías en Rojo)", use_column_width=True)
+            st.image(preview_viz, caption="Vista Previa (Guías en Violeta)", use_column_width=True)
 
         st.divider()
         st.write("### ⬇️ Descargar Archivos de Producción (300 DPI)")
@@ -408,10 +415,8 @@ def main():
                             
                             rot = auto_rotate_for_format(user_img, conf_key)
                             
-                            # Generamos la composición en memoria a 300 DPI - Pasamos el modo de ajuste
                             comp = compose_template_hd(rot, c, r, cw_p, ch_p, target_dpi=300, scaling_mode=fit_mode)
                             
-                            # Creamos el PDF compatible con FPDF 1.7.2
                             pdf_bytes = create_pdf(comp, pw, ph, ml, mr, mt, mb, c, r, target_dpi=300)
                             
                             st.download_button(
@@ -425,7 +430,7 @@ def main():
                         except Exception as e:
                             st.error(f"Error al generar: {str(e)}")
 
-    # --- FOOTER CON LINK ---
+    # --- FOOTER PRO MINIMALISTA ---
     st.markdown("""
         <div class="footer">
             Powered by <a href="https://www.instagram.com/" target="_blank" class="vasco-link">VASCO</a>
