@@ -12,12 +12,27 @@ st.set_page_config(
     page_icon="🖨️"
 )
 
-# --- ESTILOS CSS MODERNOS ---
+# --- ESTILOS CSS MODERNOS & ANIMACIONES ---
 st.markdown("""
     <style>
+    /* 1. ANIMACIÓN DE ENTRADA (TIPO REACT/SPA) */
+    @keyframes fadeInUp {
+        from { 
+            opacity: 0; 
+            transform: translate3d(0, 20px, 0); 
+        }
+        to { 
+            opacity: 1; 
+            transform: translate3d(0, 0, 0); 
+        }
+    }
+    
     .stApp {
         background-color: #f8f9fa;
+        /* Aplicamos la animación al contenedor principal */
+        animation: fadeInUp 0.6s ease-out both; 
     }
+
     div.stButton > button {
         width: 100%;
         border-radius: 8px;
@@ -41,6 +56,44 @@ st.markdown("""
         color: #666;
         text-align: center;
         margin-bottom: 2rem;
+    }
+
+    /* 2. FOOTER ESTILO 'STICKY' */
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: rgba(255, 255, 255, 0.95);
+        border-top: 1px solid #eaeaea;
+        text-align: center;
+        padding: 10px 0;
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        font-size: 0.9rem;
+        color: #555;
+        z-index: 1000;
+        backdrop-filter: blur(5px);
+    }
+
+    /* Estilo del link VASCO (Gradiente Instagram) */
+    .vasco-link {
+        font-weight: 800;
+        text-decoration: none;
+        background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        display: inline-block;
+        transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    .vasco-link:hover {
+        transform: scale(1.15) rotate(2deg);
+        cursor: pointer;
+    }
+
+    /* Espacio extra abajo para que el footer no tape el botón */
+    .block-container {
+        padding-bottom: 80px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -371,6 +424,13 @@ def main():
                             
                         except Exception as e:
                             st.error(f"Error al generar: {str(e)}")
+
+    # --- FOOTER CON LINK ---
+    st.markdown("""
+        <div class="footer">
+            Powered by <a href="https://www.instagram.com/" target="_blank" class="vasco-link">VASCO</a>
+        </div>
+    """, unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
